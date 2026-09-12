@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { ChatOverlay } from "@/features/chat";
 import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/efficiency";
 import { Gaze } from "@/features/gaze";
+import { profileOwner, useProfile } from "@/features/profile";
 import { TrainWorld } from "@/features/scene";
 import { useEfficiencyDrive } from "@/features/session";
 import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
@@ -14,6 +15,9 @@ const LOCAL_TRAIN_ID = "local";
 export function Session() {
   const localTrainId = useWorld((s) => s.localTrainId);
   const score = useEfficiency((s) => s.score);
+  const user = useProfile((s) => s.user);
+  const status = useProfile((s) => s.status);
+  const load = useProfile((s) => s.load);
 
   // Gaze reports attention, the quiz will report its own signal, and this
   // hands whatever they add up to on to the train.
@@ -23,11 +27,18 @@ export function Session() {
   useDepartureAnnouncer();
 
   useEffect(() => {
+    void load();
+  }, [load]);
+
+  // The local train waits for the profile so it boards with the right
+  // passenger. An unreachable API rides with the default rather than blocking.
+  useEffect(() => {
     if (localTrainId !== null) return;
+    if (status !== "ready" && status !== "error") return;
     const w = useWorld.getState();
     w.addTrain({
       id: LOCAL_TRAIN_ID,
-      owner: { name: "You", spriteUrl: "/characters/poku.png" },
+      owner: profileOwner(user),
       // Running from the moment you open a session: the score is what sets the
       // speed from here, and it starts wherever the score starts.
       phase: "running",
@@ -35,7 +46,14 @@ export function Session() {
       lane: 0,
     });
     w.setLocalTrainId(LOCAL_TRAIN_ID);
-  }, [localTrainId]);
+  }, [localTrainId, status, user]);
+
+  // The world store outlives route changes, so an avatar picked in Settings
+  // has to be pushed onto a train that already exists.
+  useEffect(() => {
+    if (localTrainId === null || !user) return;
+    useWorld.getState().setOwner(localTrainId, profileOwner(user));
+  }, [localTrainId, user]);
 
   const [params] = useSearchParams();
   const dev = params.has("dev");
