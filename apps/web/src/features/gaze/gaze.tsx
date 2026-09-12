@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
 import webgazer from "@webgazer-ts/core";
+import { useEffect, useRef, useState } from "react";
 
 interface GazeProps {
   /** How long you have to be turned away before we say so. Default: 2000ms. */
@@ -16,7 +16,19 @@ interface GazeProps {
   pitchThresholdDown?: number;
   /** Same idea, for looking up. Default: 0.25. */
   pitchThresholdUp?: number;
-  /** Show live head-pose numbers under the message, for tuning the thresholds above. */
+  /**
+   * Called on every sample with whether the user is facing the screen right
+   * now. This is the raw per-tick observation, not the debounced "looking
+   * away" message: smoothing it is the caller's business (see
+   * `features/efficiency`, which folds it into an attention average).
+   */
+  onFacing?: (facing: boolean) => void;
+  /**
+   * Show live head-pose numbers under the message, and WebGazer's own webcam
+   * preview — video, cyan face mesh, feedback box — for tuning the thresholds
+   * above. Off by default: during a session the camera view is a distraction,
+   * and nothing here needs it on screen. Tracking runs either way.
+   */
   debug?: boolean;
 }
 
@@ -89,8 +101,10 @@ function computeHeadPose(positions: number[][]): HeadPose | null {
   const lInner = positions[LEFT_EYE_INNER];
   if (!noseTip || !rOuter || !rInner || !lOuter || !lInner) return null;
 
-  const eyeLineCenterX = (coord(rOuter, 0) + coord(rInner, 0) + coord(lOuter, 0) + coord(lInner, 0)) / 4;
-  const eyeLineCenterY = (coord(rOuter, 1) + coord(rInner, 1) + coord(lOuter, 1) + coord(lInner, 1)) / 4;
+  const eyeLineCenterX =
+    (coord(rOuter, 0) + coord(rInner, 0) + coord(lOuter, 0) + coord(lInner, 0)) / 4;
+  const eyeLineCenterY =
+    (coord(rOuter, 1) + coord(rInner, 1) + coord(lOuter, 1) + coord(lInner, 1)) / 4;
   const interocularWidth = distance(rOuter, lOuter);
   if (interocularWidth < 1) return null;
 
@@ -114,11 +128,12 @@ interface DebugInfo {
   awayForMs: number;
 }
 
-export default function Gaze({
+export function Gaze({
   awayThresholdMs = 2000,
   yawThreshold = 0.18,
   pitchThresholdDown = 0.48,
-  pitchThresholdUp = 0.20,
+  pitchThresholdUp = 0.2,
+  onFacing,
   debug = false,
 }: GazeProps) {
   const [lookingAway, setLookingAway] = useState(false);
@@ -128,8 +143,22 @@ export default function Gaze({
   const pitchHistoryRef = useRef<number[]>([]);
   const widthHistoryRef = useRef<number[]>([]);
   const referenceWidthRef = useRef<number | null>(null);
+  // Held in a ref so a caller passing an inline arrow does not restart
+  // WebGazer — and the camera — on every render.
+  const onFacingRef = useRef(onFacing);
+  onFacingRef.current = onFacing;
 
   useEffect(() => {
+    // Set before begin(): the renderers read these when they are created, so
+    // the preview never flashes up on the way to being hidden. The gaze dot
+    // stays off in either mode — this component reads head pose from the
+    // landmarks and never uses WebGazer's on-screen prediction.
+    webgazer
+      .showVideoPreview(debug)
+      .showFaceOverlay(debug)
+      .showFaceFeedbackBox(debug)
+      .showPredictionPoints(false);
+
     webgazer.begin();
 
     const interval = setInterval(() => {
@@ -175,14 +204,20 @@ export default function Gaze({
         const referenceWidth = referenceWidthRef.current;
         distanceFactor =
           referenceWidth > 0
-            ? Math.min(MAX_DISTANCE_FACTOR, Math.max(MIN_DISTANCE_FACTOR, smoothedWidth / referenceWidth))
+            ? Math.min(
+                MAX_DISTANCE_FACTOR,
+                Math.max(MIN_DISTANCE_FACTOR, smoothedWidth / referenceWidth),
+              )
             : 1;
 
         effectiveYawThreshold = yawThreshold * distanceFactor;
         effectivePitchThresholdDown = pitchThresholdDown * distanceFactor;
         effectivePitchThresholdUp = pitchThresholdUp * distanceFactor;
 
-        facing = Math.abs(smoothedYaw) <= effectiveYawThreshold && Math.abs(smoothedPitch) <= effectivePitchThresholdDown && Math.abs(smoothedPitch) >= effectivePitchThresholdUp;
+        facing =
+          Math.abs(smoothedYaw) <= effectiveYawThreshold &&
+          Math.abs(smoothedPitch) <= effectivePitchThresholdDown &&
+          Math.abs(smoothedPitch) >= effectivePitchThresholdUp;
       } else {
         // No face, or an unreliable reading — reset smoothing so a
         // reappearing face isn't averaged against stale history. Leave the
@@ -192,6 +227,8 @@ export default function Gaze({
         pitchHistoryRef.current = [];
         widthHistoryRef.current = [];
       }
+
+      onFacingRef.current?.(facing);
 
       if (facing) {
         lastOnScreenAtRef.current = Date.now();
@@ -241,7 +278,7 @@ export default function Gaze({
               awayForMs: debugInfo.awayForMs,
             },
             null,
-            2
+            2,
           )}
         </pre>
       )}

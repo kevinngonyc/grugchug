@@ -1,8 +1,14 @@
+import { useEffect } from "react";
 import { Navigate, useParams } from "react-router";
-import { ChatRoomView } from "../features/chat";
+import { writeActiveRoomId } from "@/features/chat";
 
+/** Old per-room links: remember the room, then open it in the session overlay. */
 export function ChatRoom() {
   const { roomId } = useParams<{ roomId: string }>();
-  if (!roomId) return <Navigate to="/chat" replace />;
-  return <ChatRoomView roomId={roomId} />;
+
+  useEffect(() => {
+    if (roomId) writeActiveRoomId(roomId);
+  }, [roomId]);
+
+  return <Navigate to="/session" replace />;
 }

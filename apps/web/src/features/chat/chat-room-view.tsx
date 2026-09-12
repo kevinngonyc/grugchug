@@ -1,15 +1,20 @@
+// One room, live: history from the API, new messages over the socket. Sized
+// for the session overlay, so it fills whatever box it is given.
 import type { ChatRoom } from "@grugchug/shared";
+import { ChevronLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
 import { getRoom } from "./api";
 import { ChatComposer } from "./chat-composer";
 import { readIdentity } from "./identity";
 import { InvitePanel } from "./invite-panel";
 import { MessageList } from "./message-list";
+import { secondaryButtonClass } from "./ui";
 import { useChatRoom } from "./use-chat-room";
 
 export interface ChatRoomViewProps {
   roomId: string;
+  /** Leave this room and go back to the picker. */
+  onBack: () => void;
 }
 
 const statusLabel = {
@@ -18,7 +23,7 @@ const statusLabel = {
   offline: "Reconnecting…",
 } as const;
 
-export function ChatRoomView({ roomId }: ChatRoomViewProps) {
+export function ChatRoomView({ roomId, onBack }: ChatRoomViewProps) {
   // Read once: a changing identity object would tear down the socket.
   const [identity] = useState(readIdentity);
   const [room, setRoom] = useState<ChatRoom | null>(null);
@@ -49,46 +54,47 @@ export function ChatRoomView({ roomId }: ChatRoomViewProps) {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [log]);
 
-  if (!identity) {
+  if (!identity || loadError) {
     return (
-      <p className="text-sm text-muted-foreground">
-        You are not in this room yet.{" "}
-        <Link to="/chat" className="underline">
-          Join with an invite code
-        </Link>
-        .
-      </p>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="flex flex-col gap-2">
-        <p className="text-sm text-destructive">{loadError}</p>
-        <Link to="/chat" className="text-sm underline">
+      <div className="flex flex-col items-start gap-3 p-4">
+        <p className="text-sm text-destructive">{loadError ?? "You are not in this room yet."}</p>
+        <button type="button" className={secondaryButtonClass} onClick={onBack}>
           Back to your rooms
-        </Link>
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold">{room?.name ?? "Room"}</h1>
-          <span className="text-xs text-muted-foreground">{statusLabel[status]}</span>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex items-center gap-2 border-b border-border/40 px-3 py-2">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to your rooms"
+          className="rounded-md px-1.5 py-1 text-muted-foreground hover:bg-accent"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+        <div className="flex min-w-0 flex-col">
+          <h2 className="truncate text-sm font-semibold">{room?.name ?? "Room"}</h2>
+          <span className="text-[0.6875rem] text-muted-foreground">{statusLabel[status]}</span>
         </div>
-        {room && <InvitePanel inviteCode={room.inviteCode} />}
+        {room && (
+          <div className="ml-auto">
+            <InvitePanel inviteCode={room.inviteCode} />
+          </div>
+        )}
       </header>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="px-3 pt-2 text-xs text-destructive">{error}</p>}
 
-      <div className="flex min-h-0 flex-1 flex-col rounded-lg border p-4">
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <MessageList log={log} currentUserId={identity.userId} />
-          <div ref={endRef} />
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
+        <MessageList log={log} currentUserId={identity.userId} />
+        <div ref={endRef} />
+      </div>
+
+      <div className="px-3 pb-3">
         <ChatComposer onSend={send} />
       </div>
     </div>

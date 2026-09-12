@@ -12,10 +12,10 @@ export class RateLimiter {
   private tokens: number;
   private lastRefillMs: number;
 
-  constructor(
-    private readonly options: RateLimitOptions,
-    nowMs: number = Date.now(),
-  ) {
+  private readonly options: RateLimitOptions;
+
+  constructor(options: RateLimitOptions, nowMs: number = Date.now()) {
+    this.options = options;
     this.tokens = options.capacity;
     this.lastRefillMs = nowMs;
   }

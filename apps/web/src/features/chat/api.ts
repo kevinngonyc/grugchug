@@ -24,11 +24,11 @@ interface ResponseParser<T> {
 }
 
 export class ChatApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
     super(message);
+    this.status = status;
     this.name = "ChatApiError";
   }
 }

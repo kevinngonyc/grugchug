@@ -6,10 +6,10 @@ import { Dashboard } from "./routes/dashboard";
 import { Session } from "./routes/session";
 import { Settings } from "./routes/settings";
 
+// Chat is not a destination of its own: it rides along inside a session.
 const links = [
   { to: "/", label: "Dashboard" },
   { to: "/session", label: "Session" },
-  { to: "/chat", label: "Chat" },
   { to: "/settings", label: "Settings" },
 ];
 
@@ -28,7 +28,7 @@ export function App() {
           </NavLink>
         ))}
       </nav>
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/session" element={<Session />} />
