@@ -10,3 +10,11 @@ export function sayLine(id: VoiceLineId): void {
   const line = VOICE_LINES[id];
   say(localTrainId, line.text, line.audioUrl);
 }
+
+// A line with no recording: a bubble timed by its length. For moments the
+// conductor should mark but nobody recorded, such as naming the next station.
+export function sayText(text: string): void {
+  const { localTrainId, say } = useWorld.getState();
+  if (localTrainId === null) return;
+  say(localTrainId, text);
+}
