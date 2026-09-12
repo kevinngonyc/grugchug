@@ -14,6 +14,7 @@ import { AskPanel } from "./ask-panel";
 import { ConductorPanel } from "./conductor-panel";
 import { SessionControls } from "./session-controls";
 import { useConductorUi } from "./store";
+import { useStudyDrive } from "./study-drive";
 import { useStudySession } from "./study-session";
 
 // Opaque rather than frosted: a backdrop blur over a canvas that moves every
@@ -24,6 +25,8 @@ const panelCardClass =
 export function ConductorOverlay() {
   const open = useConductorUi((s) => s.open);
   const plan = useStudySession((s) => s.plan);
+
+  useStudyDrive();
 
   useEffect(() => {
     void useStudySession.getState().hydrate();

@@ -1,5 +1,5 @@
 // Offline: every dependency (tool runners, store) is a fake injected via
-// each handler's deps parameter — no MongoDB, no LLM calls.
+// each handler's deps parameter — no SQLite, no LLM calls.
 import { describe, expect, test } from "bun:test";
 import type { Question, RoutePlan } from "@grugchug/shared";
 import { fixtureRoutePlan } from "../conductor/fixtures";
@@ -176,7 +176,7 @@ describe("createPlan", () => {
         runGenerateQuestions: async () =>
           toolResult<GenerateQuestionsOutput>({ questions: fourQuestions }),
         save: async () => {
-          throw new Error("mongo is down");
+          throw new Error("database is down");
         },
       },
     );
@@ -239,7 +239,7 @@ describe("getPlan", () => {
   test("500s when the store throws", async () => {
     const res = await getPlanWithDeps(withParams("p1"), {
       get: async () => {
-        throw new Error("mongo is down");
+        throw new Error("database is down");
       },
     });
     expect(res.status).toBe(500);

@@ -15,7 +15,15 @@ import {
 } from "./constants";
 import { DriftMarker } from "./drift-marker";
 import { MODELS } from "./models";
-import { createMotion, driftClosing, driftGap, type LaneMotion, stepMotion } from "./motion";
+import {
+  createMotion,
+  driftClosing,
+  driftGap,
+  type LaneMotion,
+  registerMotion,
+  stepMotion,
+  unregisterMotion,
+} from "./motion";
 import { Smoke } from "./smoke";
 import { useRegroup } from "./use-regroup";
 
@@ -51,6 +59,20 @@ export function Train({ trainId, motion }: TrainProps) {
   // Metres ahead or behind the local train. Read by DriftMarker on its own
   // frame, so coming and going costs no re-renders.
   const gap = useRef(0);
+
+  // Lanes read a companion's motion from the registry to place its stations.
+  // Level it with the lane before handing it over: Lane's own station effect
+  // runs on this same commit, and for a train that mounts already
+  // stopped/finished it would otherwise read the fresh, unlevelled motion
+  // (scroll 0, speed 0) and plant the station at the world origin.
+  useEffect(() => {
+    if (isLocal) return;
+    own.current.scroll = motion.current.scroll;
+    own.current.speed = motion.current.speed;
+    synced.current = true;
+    registerMotion(trainId, own.current);
+    return () => unregisterMotion(trainId);
+  }, [trainId, isLocal, motion]);
 
   // A new arrival is a fresh start: everyone stops and everyone is level
   // again, rather than the newcomer meeting a line that is already strung out
@@ -88,10 +110,16 @@ export function Train({ trainId, motion }: TrainProps) {
         const cruise = targetSpeed({ phase: "running", efficiency: train.efficiency });
         stepMotion(own.current, cruise, targetSpeed(train), step);
 
+        // A friend resting at their platform keeps their distance: closing the
+        // gap would slide the train off the station it stopped at.
+        const drifted = driftGap(own.current, lane.scroll);
+        const closing =
+          own.current.stopTarget === null
+            ? driftClosing(drifted, own.current.speed - lane.speed, step)
+            : 0;
+        const closed = drifted - closing;
         // Folded back into this train's own scroll rather than kept as a
         // correction, so there is still only one number saying where it is.
-        const drifted = driftGap(own.current, lane.scroll);
-        const closed = drifted - driftClosing(drifted, own.current.speed - lane.speed, step);
         own.current.scroll = lane.scroll + closed;
 
         gap.current = closed;

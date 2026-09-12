@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { Journey } from "@grugchug/shared";
 import { decodeClientEvent, encode, newSocketData, roomTopic, toPresence } from "./hub";
 
 test("rooms get their own topic", () => {
@@ -71,4 +72,35 @@ test("a second tab is the same rider, reporting the newer score", () => {
   expect(toPresence([first, second])).toEqual([
     { userId: "u1", displayName: "Ada", efficiency: 0.9, focusedSeconds: 0 },
   ]);
+});
+
+test("decodes a journey report", () => {
+  const journey: Journey = { state: "studying", station: { index: 2, total: 6 } };
+  expect(decodeClientEvent(JSON.stringify({ type: "journey", avatar: "cat", journey }))).toEqual({
+    ok: true,
+    event: { type: "journey", avatar: "cat", journey },
+  });
+  expect(decodeClientEvent(JSON.stringify({ type: "journey", avatar: "nope", journey })).ok).toBe(
+    false,
+  );
+});
+
+test("the roster carries a rider's avatar and journey once sent, and omits them until then", () => {
+  const journey: Journey = { state: "at-station", station: { index: 1, total: 3 } };
+  const ada = newSocketData({ roomId: "r1", userId: "u1", displayName: "Ada" });
+  const bob = newSocketData({ roomId: "r1", userId: "u2", displayName: "Bob" });
+  ada.avatar = "cat";
+  ada.journey = journey;
+
+  const [adaPresence, bobPresence] = toPresence([ada, bob]);
+  expect(adaPresence).toEqual({
+    userId: "u1",
+    displayName: "Ada",
+    efficiency: 0,
+    avatar: "cat",
+    focusedSeconds: 0,
+    journey,
+  });
+  expect(bobPresence && "avatar" in bobPresence).toBe(false);
+  expect(bobPresence && "journey" in bobPresence).toBe(false);
 });

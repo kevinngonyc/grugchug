@@ -1,16 +1,7 @@
 import { expect, test } from "bun:test";
 import { explainFailure, guard } from "./errors";
 
-test("names the missing MONGODB_URI, because that is a setup mistake", () => {
-  expect(explainFailure(new Error("MONGODB_URI is not set"))).toContain("apps/api/.env");
-});
-
-test("names an unreachable database", () => {
-  const detail = explainFailure(new Error("connect ECONNREFUSED 127.0.0.1:27017"));
-  expect(detail).toContain("docker compose up -d");
-});
-
-test("says nothing specific about anything else", () => {
+test("unexpected failures do not expose internal details", () => {
   expect(explainFailure(new Error("Cannot read properties of undefined"))).toBe(
     "something went wrong on the server",
   );
@@ -19,13 +10,13 @@ test("says nothing specific about anything else", () => {
 
 test("guard turns a rejection into a 500 carrying the explanation", async () => {
   const wrapped = guard("test route", async () => {
-    throw new Error("MONGODB_URI is not set");
+    throw new Error("boom");
   });
   const res = await wrapped();
   expect(res.status).toBe(500);
   const body = await res.json();
   expect(body.error).toBe("server_error");
-  expect(body.detail).toContain("apps/api/.env");
+  expect(body.detail).toBe("something went wrong on the server");
 });
 
 test("guard passes a successful response through untouched", async () => {
@@ -37,4 +28,12 @@ test("guard passes a successful response through untouched", async () => {
 test("guard forwards every argument", async () => {
   const wrapped = guard("test route", async (a: number, b: string) => `${a}${b}`);
   expect(await wrapped(1, "x")).toBe("1x");
+});
+
+test("storage permission failures explain setup without exposing paths", () => {
+  for (const code of ["SQLITE_CANTOPEN", "SQLITE_READONLY_DIRECTORY", "EACCES", "EPERM", "EROFS"]) {
+    const cause = Object.assign(new Error("secret/path"), { code });
+    expect(explainFailure(cause)).toContain("check SQLITE_PATH");
+    expect(explainFailure(cause)).not.toContain("secret/path");
+  }
 });

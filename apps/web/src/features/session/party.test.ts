@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ChatPresenceMember } from "@grugchug/shared";
+import type { ChatPresenceMember, Journey } from "@grugchug/shared";
 import { arrivals, MAX_PARTY_TRAINS, partyTrainId, partyTrains, spriteForUserId } from "./party";
 
 function member(userId: string, displayName = userId, efficiency = 0.5): ChatPresenceMember {
@@ -44,18 +44,6 @@ describe("partyTrains", () => {
   });
 });
 
-describe("spriteForUserId", () => {
-  test("is stable, so you look the same on every screen", () => {
-    expect(spriteForUserId("ada")).toBe(spriteForUserId("ada"));
-  });
-
-  test("always resolves to a sprite that exists", () => {
-    for (const id of ["", "a", "ada", "x".repeat(64), "Rider 4821"]) {
-      expect(spriteForUserId(id)).toMatch(/^\/characters\//);
-    }
-  });
-});
-
 describe("arrivals", () => {
   const known = (...ids: string[]) => new Set(ids);
 
@@ -79,5 +67,35 @@ describe("arrivals", () => {
 
   test("an empty room announces nobody", () => {
     expect(arrivals([], known("ada"), "me")).toEqual([]);
+  });
+});
+
+describe("partyTrains with journeys", () => {
+  const base = { userId: "u2", displayName: "Ada", efficiency: 0.5 };
+
+  test("uses the rider's own avatar when presence carries one", () => {
+    const [train] = partyTrains([{ ...base, avatar: "cat" }], "me");
+    expect(train?.owner.spriteUrl).toBe("/characters/cat.png");
+  });
+
+  test("falls back to the hashed sprite without an avatar", () => {
+    const [train] = partyTrains([base], "me");
+    expect(train?.owner.spriteUrl).toBe(spriteForUserId("u2"));
+  });
+
+  test("stops at a station, on a break, or while answering; runs while studying", () => {
+    const at = (state: Journey["state"]) =>
+      partyTrains([{ ...base, journey: { state, station: { index: 1, total: 2 } } }], "me")[0]
+        ?.phase;
+    expect(at("studying")).toBe("running");
+    expect(at("at-station")).toBe("stopped");
+    expect(at("answering")).toBe("stopped");
+    expect(at("on-break")).toBe("stopped");
+    expect(at("idle")).toBe("stopped");
+    expect(at("finished")).toBe("finished");
+  });
+
+  test("a rider with no journey keeps running as before", () => {
+    expect(partyTrains([base], "me")[0]?.phase).toBe("running");
   });
 });

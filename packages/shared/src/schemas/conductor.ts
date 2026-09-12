@@ -81,7 +81,7 @@ export const publicStationSchema = stationSchema.extend({
 
 export type PublicStation = z.infer<typeof publicStationSchema>;
 
-// A whole route built from one piece of study material. This is what MongoDB stores.
+// A whole route built from one piece of study material. This is what the API stores.
 export const routePlanSchema = z.object({
   id: z.string(),
   userId: z.string(),

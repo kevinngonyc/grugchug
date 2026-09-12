@@ -1,9 +1,8 @@
 // HTTP side of chat: getting the one room you are in, joining someone else's
 // from an invite link, and reading history. Live delivery and the roster of
 // who is connected are in ../chat/hub.ts.
-import type { ChatErrorCode, RoomResponse } from "@grugchug/shared";
+import type { RoomResponse } from "@grugchug/shared";
 import {
-  CHAT_USER_HEADER,
   joinRoomRequestSchema,
   MESSAGE_PAGE_SIZE,
   myRoomRequestSchema,
@@ -20,15 +19,7 @@ import {
   listMessages,
 } from "../chat/store";
 
-// Who is calling. See CHAT_USER_HEADER in @grugchug/shared for the trust model.
-function callerId(req: Request): string | null {
-  const parsed = userIdSchema.safeParse(req.headers.get(CHAT_USER_HEADER) ?? "");
-  return parsed.success ? parsed.data : null;
-}
-
-function problem(status: number, code: ChatErrorCode, detail?: string): Response {
-  return Response.json({ error: code, detail }, { status });
-}
+import { callerId, problem } from "./http";
 
 async function readJson(req: Request): Promise<unknown> {
   try {

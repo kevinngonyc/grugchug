@@ -6,8 +6,8 @@ import { efficiencyFraction } from "@/features/efficiency";
 import { FocusBoard } from "@/features/leaderboard";
 import { profileOwner, useProfile } from "@/features/profile";
 import { createVoiceAudio, TrainWorld } from "@/features/scene";
-import { useEfficiencyDrive, usePartyTrains } from "@/features/session";
-import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
+import { useEfficiencyDrive, useJourneyLink, usePartyTrains } from "@/features/session";
+import { useSpeechPlayer } from "@/features/speech";
 import { useWorld } from "@/features/world";
 import { FocusHud } from "./focus-hud";
 import { SessionDevPanel } from "./session-dev-panel";
@@ -23,11 +23,12 @@ export function Session() {
   // Gaze reports attention, the quiz will report its own signal, and this
   // hands whatever they add up to on to the train — and to the room.
   useEfficiencyDrive();
-  // Conductors: play each utterance's clip and announce departures.
+  // Conductors: play each utterance's clip.
   useSpeechPlayer(createVoiceAudio);
-  useDepartureAnnouncer();
   // Everyone in your chat room gets a train in the lane beside yours.
   usePartyTrains();
+  // The room hears where you are on your route.
+  useJourneyLink();
 
   useEffect(() => {
     void load();
@@ -44,9 +45,9 @@ export function Session() {
     w.addTrain({
       id: LOCAL_TRAIN_ID,
       owner: profileOwner(user),
-      // Running from the moment you open a session: the score is what sets the
-      // speed from here, and it starts wherever the score starts.
-      phase: "running",
+      // Waiting at the platform until Start studying; the study session drives
+      // the phase from here.
+      phase: "stopped",
       efficiency: efficiencyFraction(),
       lane: 0,
     });

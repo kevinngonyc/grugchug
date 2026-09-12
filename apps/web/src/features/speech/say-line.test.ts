@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { TrainState } from "@grugchug/shared";
 import { useWorld } from "@/features/world";
 import { VOICE_LINES } from "./lines";
-import { sayLine } from "./say-line";
+import { sayLine, sayText } from "./say-line";
 
 const local: TrainState = {
   id: "local",
@@ -33,5 +33,21 @@ describe("sayLine", () => {
     sayLine("passQuiz");
     expect(speechOf("friend")).toBeUndefined();
     expect(useWorld.getState().trains.local).toBeUndefined();
+  });
+});
+
+describe("sayText", () => {
+  test("has the local conductor say a plain line with no clip", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.setLocalTrainId("local");
+    sayText("Now arriving: Photosynthesis");
+    expect(speechOf("local")?.text).toBe("Now arriving: Photosynthesis");
+    expect(speechOf("local")?.audioUrl).toBeUndefined();
+  });
+
+  test("does nothing when there is no local train", () => {
+    sayText("hello?");
+    expect(useWorld.getState().trains).toEqual({});
   });
 });

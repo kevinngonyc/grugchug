@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { createSpeechPlayer, type SpeechPlayerDeps } from "./player";
 
-// Mount once on the page that shows the world. Plays every train's speech,
-// friends included, and clears each line when its clip ends.
+// Mount once on the page that shows the world. Clips play only for the local
+// train; other trains' lines are bubbles timed by their text. Clears each
+// line when it is over.
 type VoiceOutput = { createAudio: SpeechPlayerDeps["createAudio"]; dispose(): void };
 
 export function useSpeechPlayer(createOutput: () => VoiceOutput): void {

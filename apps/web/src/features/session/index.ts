@@ -3,13 +3,14 @@
 // writer into the world: the study efficiency score becomes the local train's
 // efficiency, and so its speed, and the chat roster becomes the trains running
 // alongside it.
-export type { Session } from "@grugchug/shared";
+export type { StudySession } from "@grugchug/shared";
 export {
   arrivals,
   MAX_PARTY_TRAINS,
   PARTY_TRAIN_PREFIX,
   partyTrainId,
   partyTrains,
+  phaseForJourney,
   spriteForUserId,
 } from "./party";
 export {
@@ -17,4 +18,5 @@ export {
   EFFICIENCY_DRIVE_INTERVAL_MS,
   useEfficiencyDrive,
 } from "./use-efficiency-drive";
+export { syncJourney, useJourneyLink } from "./use-journey-link";
 export { usePartyTrains } from "./use-party-trains";

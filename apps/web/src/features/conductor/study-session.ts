@@ -1,9 +1,8 @@
 // The study session state machine: upload → timer → station → answer or
-// keep studying or break → next station. Owns the one place features/scene
-// is written from outside features/session — calling setPhase to stop the
-// train at a station is a world command like any other, the same one the
-// dev panel already calls by hand; efficiency-driven speed is the only
-// thing exclusively owned by features/session.
+// keep studying or break → next station. The mode is the one source of
+// truth for the local train's phase (see study-drive.ts, which projects it)
+// and for what the conductor says (features/speech); efficiency-driven speed
+// is the only thing exclusively owned by features/session.
 //
 // The plan itself is never persisted — only enough to resume is kept in
 // localStorage (see session-storage.ts), and the plan is refetched by id on
@@ -16,12 +15,20 @@ import type {
   PublicStation,
 } from "@grugchug/shared";
 import { create } from "zustand";
-import { useWorld } from "@/features/world";
+import { useEfficiency } from "@/features/efficiency";
+import { sayLine, sayText } from "@/features/speech";
 import { getUserId } from "@/lib/user-id";
 import { createPlan, evaluateProgress, getPlan, setTimer, submitAnswer } from "./api";
+import { endHistory, recordHistory, startHistory } from "./history";
 import { useMaterialLibrary } from "./material-library";
 import { clearSession, readSession, writeSession } from "./session-storage";
 import { useConductorUi } from "./store";
+
+// Quiz results are one more opinion about how the sitting is going: half the
+// pull of attention, fading over ten minutes so a bad station is not forever.
+const QUIZ_SOURCE = "quiz";
+const QUIZ_WEIGHT = 0.5;
+const QUIZ_HALF_LIFE_MS = 10 * 60_000;
 
 export type SessionMode =
   | "idle" // no plan, or a plan not yet started
@@ -44,6 +51,8 @@ interface StudySessionState {
   stationFeedback: string | null;
   busy: boolean;
   error: string | null;
+  historyId: string | null;
+  departed: boolean;
 
   hydrate: () => Promise<void>;
   startSession: (plan: PublicRoutePlan) => void;
@@ -63,10 +72,6 @@ function currentStation(state: StudySessionState): PublicStation | undefined {
   return state.plan?.stations[state.stationIndex];
 }
 
-function localTrainId(): string | null {
-  return useWorld.getState().localTrainId;
-}
-
 function persist(state: StudySessionState): void {
   if (!state.plan) {
     clearSession();
@@ -79,6 +84,8 @@ function persist(state: StudySessionState): void {
     timerEndsAt: state.timerEndsAt,
     timerMessage: state.timerMessage,
     lastStretchMinutes: state.lastStretchMinutes,
+    historyId: state.historyId,
+    departed: state.departed,
   });
 }
 
@@ -107,6 +114,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   stationFeedback: null,
   busy: false,
   error: null,
+  historyId: null,
+  departed: false,
 
   hydrate: async () => {
     const saved = readSession();
@@ -120,6 +129,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         timerEndsAt: saved.timerEndsAt,
         timerMessage: saved.timerMessage,
         lastStretchMinutes: saved.lastStretchMinutes,
+        historyId: saved.historyId,
+        departed: saved.departed,
       });
     } catch {
       // The plan is gone or unreachable: behave like there is nothing to resume.
@@ -140,6 +151,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       stationFeedback: null,
       busy: false,
       error: null,
+      historyId: null,
+      departed: false,
     });
     persist(get());
   },
@@ -176,26 +189,44 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     const station = currentStation(state);
     if (!state.plan || !station) return;
     set({ busy: true, error: null });
-    // Idempotent when the train is already running (the very first station);
-    // it is what actually departs one left stopped at a station — passing a
-    // station's questions, or picking "keep studying" there, both land here.
-    const id = localTrainId();
-    if (id) useWorld.getState().setPhase(id, "running");
     try {
       const { minutes, message } = await setTimer({
         planId: state.plan.id,
         stationId: station.id,
         reason: "study",
       });
+      // `departed` is persisted immediately, in the same set as the mode
+      // change, rather than after the history POST below: a reload during
+      // that POST must not find `departed: false` and replay the
+      // all-aboard line or open a second history record.
       set({
         mode: "counting",
         timerEndsAt: Date.now() + minutes * 60_000,
         timerMessage: message,
         lastStretchMinutes: minutes,
         busy: false,
+        departed: true,
       });
       persist(get());
       useConductorUi.getState().closePanel();
+
+      // A fresh route departs with the all-aboard line and opens its history
+      // record; a departure after a passed station stays quiet, the pass line
+      // is still playing. `state.departed` is the pre-call snapshot, so this
+      // still gates on whether this is the first departure. The timer and the
+      // panel are already committed above, so a slow (or failing) history
+      // POST here cannot hold up the UI; a failed start leaves `historyId`
+      // null but `departed` is already true and stays true.
+      if (!state.departed) {
+        sayLine("startSession");
+        const historyId = await startHistory({
+          userId: getUserId(),
+          planId: state.plan.id,
+          stationTotal: state.plan.stations.length,
+        });
+        set({ historyId });
+        persist(get());
+      }
     } catch {
       set({ busy: false, error: "Could not start the timer. Try again." });
     }
@@ -206,8 +237,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     if (state.timerEndsAt === null || Date.now() < state.timerEndsAt) return;
 
     if (state.mode === "counting") {
-      const id = localTrainId();
-      if (id) useWorld.getState().setPhase(id, "stopped");
+      const station = currentStation(state);
+      if (station) sayText(`Now arriving: ${station.title}`);
       // A fresh arrival, not a return from grading: last station's feedback
       // and scores no longer describe anything on screen.
       set({
@@ -219,6 +250,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       });
       persist(get());
     } else if (state.mode === "on-break") {
+      sayText("Break's over.");
       set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
       persist(get());
     }
@@ -250,8 +282,6 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         stationId: station.id,
         reason: "keep-studying",
       });
-      const id = localTrainId();
-      if (id) useWorld.getState().setPhase(id, "running");
       set({
         mode: "counting",
         timerEndsAt: Date.now() + minutes * 60_000,
@@ -259,6 +289,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         lastStretchMinutes: minutes,
         busy: false,
       });
+      sayLine("restartStudy");
       persist(get());
       useConductorUi.getState().closePanel();
     } catch {
@@ -282,6 +313,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         timerMessage: message,
         busy: false,
       });
+      sayLine("takeBreak");
       persist(get());
     } catch {
       set({ busy: false, error: "Could not start a break. Try again." });
@@ -323,6 +355,14 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       return;
     }
 
+    const scores = station.questions.map((q) => results[q.id]?.score ?? 0);
+    const meanScore = scores.reduce((sum, s) => sum + s, 0) / Math.max(1, scores.length);
+    useEfficiency.getState().report(QUIZ_SOURCE, meanScore, {
+      label: "Quiz",
+      weight: QUIZ_WEIGHT,
+      halfLifeMs: QUIZ_HALF_LIFE_MS,
+    });
+
     const progress: ProgressResult[] = station.questions.map((q) => {
       const answer = state.answers[q.id];
       const result = results[q.id];
@@ -341,6 +381,14 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         results: progress,
       });
 
+      // Fire and forget: a hung API must never delay the verdict on screen.
+      recordHistory(state.historyId, {
+        stationIndex: state.stationIndex,
+        stationId: station.id,
+        passed,
+        meanScore,
+      });
+
       if (!passed) {
         set({ mode: "at-station", stationFeedback: feedback, busy: false });
         persist(get());
@@ -348,14 +396,16 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       }
 
       const nextIndex = state.stationIndex + 1;
-      const id = localTrainId();
       if (nextIndex >= state.plan.stations.length) {
-        if (id) useWorld.getState().setPhase(id, "running");
+        sayLine("greatSession");
+        // Fire and forget: the completion screen must not wait on the network.
+        endHistory(state.historyId, "completed");
         set({ mode: "complete", stationFeedback: feedback, busy: false });
         persist(get());
         return;
       }
 
+      sayLine("passQuiz");
       // Passed, and stations remain: show the result — this station's
       // per-question scores are still in `results` — rather than racing on
       // to the next timer before the learner ever sees them. The train stays
@@ -369,9 +419,10 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   },
 
   quit: () => {
-    const id = localTrainId();
-    if (id && useWorld.getState().trains[id]?.phase === "stopped") {
-      useWorld.getState().setPhase(id, "running");
+    const { historyId, mode } = get();
+    if (mode !== "complete") {
+      // Fire and forget: quitting must be instant even with the API down.
+      endHistory(historyId, "quit").catch(() => undefined);
     }
     clearSession();
     set({
@@ -386,6 +437,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       stationFeedback: null,
       busy: false,
       error: null,
+      historyId: null,
+      departed: false,
     });
   },
 }));
