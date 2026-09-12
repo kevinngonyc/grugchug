@@ -15,6 +15,9 @@ interface RoomDoc {
   createdAt: Date;
 }
 
+// `joinedAt` is when this membership last came in through an invite link, not
+// when it first existed. That is deliberate: it is what decides which room a
+// browser is in, so following a link you have followed before moves you back.
 interface MemberDoc {
   _id: string;
   roomId: string;
@@ -106,22 +109,42 @@ function isDuplicateKey(error: unknown): boolean {
 
 async function upsertMember(
   members: Collection<MemberDoc>,
-  input: { roomId: string; userId: string; displayName: string; now: Date },
+  input: {
+    roomId: string;
+    userId: string;
+    displayName: string;
+    now: Date;
+    /** An invite link was followed: make this the room the user is in. */
+    entering?: boolean;
+  },
 ): Promise<ChatMember> {
-  // Joining twice is not an error: it re-joins and refreshes the display name.
+  // Joining twice is not an error: it re-enters and refreshes the display name.
+  // joinedAt is written by exactly one operator — Mongo rejects an update that
+  // touches the same path in both $set and $setOnInsert.
+  const identity = { roomId: input.roomId, userId: input.userId };
   const doc = await members.findOneAndUpdate(
     { _id: memberKey(input.roomId, input.userId) },
-    {
-      $set: { displayName: input.displayName },
-      $setOnInsert: { roomId: input.roomId, userId: input.userId, joinedAt: input.now },
-    },
+    input.entering
+      ? {
+          $set: { displayName: input.displayName, joinedAt: input.now },
+          $setOnInsert: identity,
+        }
+      : {
+          $set: { displayName: input.displayName },
+          $setOnInsert: { ...identity, joinedAt: input.now },
+        },
     { upsert: true, returnDocument: "after" },
   );
   if (!doc) throw new Error("member upsert returned nothing");
   return toMember(doc);
 }
 
-export async function createRoom(input: {
+// Nothing in the UI shows a room name any more — you are simply in a room, and
+// the roster is what tells you whose. The column stays because the schema has
+// it and because a future "name your study group" is a one-line change.
+export const DEFAULT_ROOM_NAME = "Study room";
+
+async function createRoom(input: {
   name: string;
   userId: string;
   displayName: string;
@@ -173,35 +196,55 @@ export async function joinRoomByInviteCode(input: {
     userId: input.userId,
     displayName: input.displayName,
     now: new Date(),
+    entering: true,
   });
   return { room: toRoom(doc), member };
+}
+
+/**
+ * The one room this browser is in: the most recently joined, or a brand new
+ * one for a first-time visitor. Every visit refreshes the display name, so the
+ * name field at the top of the chat is the only thing that sets it.
+ */
+export async function findOrCreateRoomForUser(input: {
+  userId: string;
+  displayName: string;
+}): Promise<{ room: ChatRoom; member: ChatMember }> {
+  const { rooms, members } = await collections();
+  const membership = await members
+    .find({ userId: input.userId })
+    .sort({ joinedAt: -1 })
+    .limit(1)
+    .next();
+
+  if (membership) {
+    const doc = await rooms.findOne({ _id: membership.roomId });
+    // A membership whose room is gone is not an error: fall through and make
+    // a fresh room rather than stranding the user with nowhere to talk.
+    if (doc) {
+      const member = await upsertMember(members, {
+        roomId: doc._id,
+        userId: input.userId,
+        displayName: input.displayName,
+        now: new Date(),
+      });
+      return { room: toRoom(doc), member };
+    }
+  }
+
+  return createRoom({ name: DEFAULT_ROOM_NAME, ...input });
+}
+
+/** Renaming yourself renames you everywhere you are a member. */
+export async function setDisplayName(userId: string, displayName: string): Promise<void> {
+  const { members } = await collections();
+  await members.updateMany({ userId }, { $set: { displayName } });
 }
 
 export async function findMember(roomId: string, userId: string): Promise<ChatMember | null> {
   const { members } = await collections();
   const doc = await members.findOne({ _id: memberKey(roomId, userId) });
   return doc ? toMember(doc) : null;
-}
-
-export async function findRoom(roomId: string): Promise<ChatRoom | null> {
-  const { rooms } = await collections();
-  const doc = await rooms.findOne({ _id: roomId });
-  return doc ? toRoom(doc) : null;
-}
-
-export async function listRoomsForUser(userId: string): Promise<ChatRoom[]> {
-  const { members, rooms } = await collections();
-  const memberships = await members.find({ userId }).sort({ joinedAt: -1 }).toArray();
-  if (memberships.length === 0) return [];
-
-  const roomIds = memberships.map((m) => m.roomId);
-  const docs = await rooms.find({ _id: { $in: roomIds } }).toArray();
-  const byId = new Map(docs.map((doc) => [doc._id, doc]));
-  // Preserve the membership ordering: most recently joined first.
-  return roomIds.flatMap((id) => {
-    const doc = byId.get(id);
-    return doc ? [toRoom(doc)] : [];
-  });
 }
 
 export async function listMessages(

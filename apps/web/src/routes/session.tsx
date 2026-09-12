@@ -4,7 +4,7 @@ import { ChatOverlay } from "@/features/chat";
 import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/efficiency";
 import { Gaze } from "@/features/gaze";
 import { TrainWorld } from "@/features/scene";
-import { useEfficiencyDrive } from "@/features/session";
+import { useEfficiencyDrive, usePartyTrains } from "@/features/session";
 import { useWorld } from "@/features/world";
 import { SessionDevPanel } from "./session-dev-panel";
 
@@ -15,8 +15,10 @@ export function Session() {
   const score = useEfficiency((s) => s.score);
 
   // Gaze reports attention, the quiz will report its own signal, and this
-  // hands whatever they add up to on to the train.
+  // hands whatever they add up to on to the train — and to the room.
   useEfficiencyDrive();
+  // Everyone in your chat room gets a train in the lane beside yours.
+  usePartyTrains();
 
   useEffect(() => {
     if (localTrainId !== null) return;

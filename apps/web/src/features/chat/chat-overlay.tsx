@@ -1,29 +1,16 @@
 // Chat as it appears during a study session: a bubble in the corner of the
-// scene that opens a panel over it. This owns which room is on screen; the
-// views below it know nothing about the overlay or about routing.
+// scene that opens a panel over it.
 //
-// The panel is hidden rather than unmounted, so closing it does not drop the
-// socket and reopening does not replay history.
+// The panel is hidden rather than unmounted. That used to be about not
+// dropping the socket on every toggle; now it is load-bearing, because the
+// socket is how the room knows you are here and how your friends' trains stay
+// on the track.
 import { MessageCircle, X } from "lucide-react";
 import { useState } from "react";
-import { clearActiveRoomId, readActiveRoomId, writeActiveRoomId } from "./active-room";
-import { ChatRoomView } from "./chat-room-view";
-import { ChatRoomsView } from "./chat-rooms-view";
+import { ChatPanel } from "./chat-panel";
 
 export function ChatOverlay() {
   const [open, setOpen] = useState(false);
-  const [roomId, setRoomId] = useState<string | null>(readActiveRoomId);
-
-  function openRoom(id: string): void {
-    writeActiveRoomId(id);
-    setRoomId(id);
-    setOpen(true);
-  }
-
-  function leaveRoom(): void {
-    clearActiveRoomId();
-    setRoomId(null);
-  }
 
   return (
     <>
@@ -52,11 +39,7 @@ export function ChatOverlay() {
           "border border-border/40 bg-background/55 shadow-xl backdrop-blur-md"
         }
       >
-        {roomId === null ? (
-          <ChatRoomsView onOpenRoom={openRoom} />
-        ) : (
-          <ChatRoomView roomId={roomId} onBack={leaveRoom} />
-        )}
+        <ChatPanel />
       </div>
     </>
   );

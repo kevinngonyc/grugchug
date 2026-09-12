@@ -4,20 +4,46 @@ Date: 2026-09-12
 
 ## What this is
 
-Text chat in rooms. You create a room, you get an invite code and a link, and
-anyone you send it to can join by picking a display name. Messages are live for
-everyone in the room and are kept, so history is there when you come back.
+One room, and the people in it. Opening the app puts you in your own room;
+opening someone's invite link moves you into theirs. There is no picker, no
+room list and no code to type, so the whole surface is a name field, an invite
+link, and the conversation — the first two pinned to the top because they are
+the only two things you ever do to a room.
+
+Everyone connected is drawn as a train in the lane beside yours, running at the
+speed of their own study score. That is the point of the room: you can see who
+is riding with you and how it is going for them.
 
 ## What this is deliberately not
 
-- **No presence.** No online/offline dots, no "typing…", no member list
-  alongside the log. Who is in the room is not something the UI reports.
+- **No room management.** No naming, leaving, renaming or listing. You are in
+  the room you last entered, and the link is what moves you.
 - **No friends or contacts.** The room is the only relationship.
-- **No shared study data.** Chat never reads gaze, typing or session state, and
-  nothing reads chat. The two halves of the app do not touch.
+- **No stored presence.** Who is here is the set of open sockets and nothing
+  else: no last-seen, no online/offline, no "typing…", no member table.
+- **No world sync.** Presence carries a name and a score. Nobody's phase,
+  station or position on the track crosses the wire.
 
-Each of those is a room-shaped extension if it is wanted later, but none is
-needed for "invite someone and talk to them", so none is here.
+## One room
+
+A `chatMembers` row's `joinedAt` is when that membership last came in through
+an invite link, and the room you are in is simply the most recent of those. So:
+
+- First load: you have no membership, so one room is created with you in it.
+- Following a link: your membership in that room is inserted or re-entered,
+  which makes it the newest, which makes it your room.
+- Following an old link again: the same, so it moves you back.
+
+Rooms are never deleted, and the one you drifted away from is still there with
+your old membership in it — unreachable unless someone sends you its link
+again. That is the cost of not having a picker, and it is worth it.
+
+The name has no gate in front of it. A first visit is given one (`Rider 4821`)
+so the room, the socket and the train can exist before anyone has typed
+anything, and the field at the top of the chat is the only thing that changes
+it. Renaming updates the membership and the roster from that moment; messages
+already sent keep the name they were sent under, because the name is
+denormalized onto them.
 
 ## Shape
 
@@ -43,6 +69,71 @@ Paging walks back by `(createdAt, _id)` rather than by timestamp alone, so two
 messages written in the same millisecond cannot straddle a page boundary and
 lose one.
 
+### Presence
+
+The hub keeps the open sockets per room, and that set *is* the roster. Nothing
+is stored, so closing the tab removes you and a server restart empties every
+room. Any change — arrival, departure, rename, a new focus score — broadcasts
+the whole roster, not a diff: it is a handful of people, and a client that
+reconnects mid-change should not have to reconcile anything. It goes out socket
+by socket rather than through the topic, because `ws.publish` skips the sender
+and the person who just arrived is exactly who needs it.
+
+Two tabs are one rider: the roster is keyed by `userId`, and the newest
+connection's score wins.
+
+### Focus, and the trains
+
+Each rider's 0..1 study score rides along on the roster, so the browser can
+draw everyone's train. The direction is strict — `features/session` pushes the
+score into chat with `reportFocus()`, and chat carries it; chat never reads the
+efficiency store itself. The client throttles to one frame every two seconds
+and only when the score has actually moved, and the server lets focus frames
+skip the message rate limiter since they never touch the database.
+
+On screen, every lane scrolls with the local train, which is what keeps the
+rails and scenery from sliding against each other. A friend's train integrates
+its own speed on top of that, so the difference between two scores shows up as
+a gap along the track — ahead if they are more locked in than you, behind if
+they are not. Nothing caps that gap. Someone who studies harder than you for
+ten minutes really is a long way up the line, so their train runs out of the
+frame and keeps going; holding them at the edge would mean owing them the
+distance back the moment they slowed down. Four friends get lanes; past that
+the room is still in the chat but not on the track.
+
+The gap is only telling you something while the two trains disagree about
+speed. Once they agree it is just where they happened to end up, so it eases
+shut: a friend who vanished during a bad stretch is back inside the frame
+within a minute of matching your pace, arriving at a walk rather than a jump.
+
+Someone new joining is a fresh start for the line: every train's speed drops to
+nothing and every train is placed level again, then the whole line winds back
+up together. Without the re-levelling the newcomer would arrive to find
+everyone else strung out over a kilometre and mostly off screen, which says
+nothing about the session they are actually joining. It costs no visible jump —
+a train far enough out for the reset to matter is off screen while it happens,
+and one close enough to see moves a few metres.
+
+A join is a fact about people, so it is a new `userId` on the roster: a rename
+or a new score is not one, and neither is a reconnect, which would otherwise
+read as the whole room arriving at once. The roster is only ever empty when the
+socket is down — you are always in your own — so an empty one is ignored rather
+than treated as everybody leaving.
+
+A train that has left the picture is replaced by an arrowhead at the edge of
+it, pointing the way it went — forward and green for someone pulling away,
+back and amber for someone dropping off. The marker is not a world position: it
+measures the camera frustum every frame and sits just inside whichever edge it
+finds, so resizing the window moves it rather than letting it slide out of
+view. What counts as "off screen" comes out of the same measurement, so a
+narrower window turns a visible train into an arrow without the train having
+moved at all.
+
+It says direction and nothing else. The distance is knowable — the gap is a
+real number — but "they are somewhere off that way" is what a glance at a
+study scene can use, and a live count of metres would be a number to watch
+instead of the work.
+
 ### Delivery
 
 The hub subscribes each socket to `chat:room:<roomId>`. On a send it persists
@@ -52,8 +143,10 @@ not in that publish: they get a separate copy carrying their own `clientId`,
 which lets the client swap out its optimistic bubble instead of showing the
 message twice.
 
-A per-connection token bucket (15 burst, 2/s sustained) keeps one client from
-flooding a room.
+A per-connection token bucket (15 burst, 2/s sustained) covers everything that
+writes to the database — messages and renames. Focus reports are not in it:
+they are throttled by the client and cost one broadcast to a handful of
+sockets.
 
 ## Identity, and what it is not
 
@@ -71,6 +164,7 @@ is **not authentication**:
   no other way to prove who you were.
 - An invite code is permanent and unrevocable: there is no way to remove a
   member or rotate a room's code, so a code that leaks means the room leaks.
+  With the link as the only way in, that is also the only thing to guard.
 - Display names are unverified. Two members can pick the same one.
 
 Non-members get `404`, never `403`, so whether a room id exists is not probeable
@@ -84,7 +178,10 @@ invitation addressed to an account. Nothing else in the design has to move.
 
 - Editing and deleting messages; the merge already tolerates a message id being
   rewritten, but nothing produces that yet.
-- Leaving a room, removing a member, rotating an invite code.
+- Leaving a room, removing a member, rotating an invite code. "Leave" is
+  currently "get a new room of your own", which nothing offers.
+- Choosing your own sprite: it is derived from the `userId` so that you look
+  the same on everyone's screen, and there is no way to pick.
 - Attachments, reactions, unread counts, notifications.
 - Scaling past one server process: topics are per-process, so a second instance
   would need Redis pub/sub or a change stream in front of the hub.

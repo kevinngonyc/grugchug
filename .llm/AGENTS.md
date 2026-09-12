@@ -56,7 +56,11 @@ All from the repo root.
 - The study efficiency score has one home: `features/efficiency`. Sources
   report into it (`report(source, 0..1, { weight, halfLifeMs })`); readers read
   `score` and never recompute their own. `features/session` is the only writer
-  into `world`.
+  into `world` — including the trains that come from the chat roster.
+- `features/chat` reads nothing from the rest of the app. Traffic across that
+  boundary is driven from `features/session` and goes one way each: the score
+  is pushed in with `reportFocus()`, and the roster is read out with
+  `useRoster()`. Keep it that way rather than letting chat reach for a store.
 - Scene numbers live in `features/scene/constants.ts`. Tune there, not inline.
 - Character sprites are 500x500 PNGs with transparent margins in
   `apps/web/public/characters/`. Every sprite maps whole onto the same square

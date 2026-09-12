@@ -1,11 +1,12 @@
-// HTTP side of chat: creating rooms, joining by invite code, listing your
-// rooms, and reading history. Live delivery is in ../chat/hub.ts.
+// HTTP side of chat: getting the one room you are in, joining someone else's
+// from an invite link, and reading history. Live delivery and the roster of
+// who is connected are in ../chat/hub.ts.
 import type { ChatErrorCode, RoomResponse } from "@grugchug/shared";
 import {
   CHAT_USER_HEADER,
-  createRoomRequestSchema,
   joinRoomRequestSchema,
   MESSAGE_PAGE_SIZE,
+  myRoomRequestSchema,
   userIdSchema,
 } from "@grugchug/shared";
 import type { BunRequest, Server } from "bun";
@@ -13,12 +14,10 @@ import { guard } from "../chat/errors";
 import { type ChatSocketData, newSocketData } from "../chat/hub";
 import { newUserId } from "../chat/ids";
 import {
-  createRoom,
   findMember,
-  findRoom,
+  findOrCreateRoomForUser,
   joinRoomByInviteCode,
   listMessages,
-  listRoomsForUser,
 } from "../chat/store";
 
 // Who is calling. See CHAT_USER_HEADER in @grugchug/shared for the trust model.
@@ -39,16 +38,21 @@ async function readJson(req: Request): Promise<unknown> {
   }
 }
 
-async function createRoomImpl(req: BunRequest): Promise<Response> {
-  const body = createRoomRequestSchema.safeParse(await readJson(req));
+/**
+ * The room this browser is in. There is only ever one, so this both resolves
+ * it and creates it: opening the app for the first time is what makes your
+ * room, and every call refreshes your display name.
+ */
+async function myRoomImpl(req: BunRequest): Promise<Response> {
+  const body = myRoomRequestSchema.safeParse(await readJson(req));
   if (!body.success) {
     return problem(400, "invalid_payload", body.error.issues[0]?.message);
   }
 
-  // A first-time visitor has no identity yet; creating a room mints one.
+  // A first-time visitor has no identity yet; getting a room mints one.
   const userId = callerId(req) ?? newUserId();
-  const result = await createRoom({ ...body.data, userId });
-  return Response.json(result satisfies RoomResponse, { status: 201 });
+  const result = await findOrCreateRoomForUser({ ...body.data, userId });
+  return Response.json(result satisfies RoomResponse);
 }
 
 async function joinRoomImpl(req: BunRequest): Promise<Response> {
@@ -61,26 +65,6 @@ async function joinRoomImpl(req: BunRequest): Promise<Response> {
   const result = await joinRoomByInviteCode({ ...body.data, userId });
   if (!result) return problem(404, "not_found", "no room with that invite code");
   return Response.json(result satisfies RoomResponse);
-}
-
-async function listRoomsImpl(req: BunRequest): Promise<Response> {
-  const userId = callerId(req);
-  if (!userId) return problem(401, "unauthorized");
-  return Response.json({ rooms: await listRoomsForUser(userId) });
-}
-
-async function getRoomImpl(req: BunRequest<"/api/chat/rooms/:roomId">): Promise<Response> {
-  const userId = callerId(req);
-  if (!userId) return problem(401, "unauthorized");
-
-  // Non-members get "not found" rather than "forbidden": whether a room id
-  // exists is not something a stranger should be able to probe.
-  const member = await findMember(req.params.roomId, userId);
-  if (!member) return problem(404, "not_found");
-
-  const room = await findRoom(req.params.roomId);
-  if (!room) return problem(404, "not_found");
-  return Response.json({ room, member } satisfies RoomResponse);
 }
 
 async function listMessagesImpl(
@@ -128,9 +112,7 @@ async function chatSocketImpl(
 
 // Every handler is guarded: a store failure is logged with its stack and comes
 // back as a readable 500 rather than an empty one.
-export const createRoomRoute = guard("create room", createRoomImpl);
+export const myRoomRoute = guard("my room", myRoomImpl);
 export const joinRoomRoute = guard("join room", joinRoomImpl);
-export const listRoomsRoute = guard("list rooms", listRoomsImpl);
-export const getRoomRoute = guard("get room", getRoomImpl);
 export const listMessagesRoute = guard("list messages", listMessagesImpl);
 export const chatSocketRoute = guard("socket upgrade", chatSocketImpl);

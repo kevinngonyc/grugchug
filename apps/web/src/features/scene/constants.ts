@@ -10,6 +10,26 @@ export const KIT_ROTATION_Y = Math.PI / 2;
 export const LANE_SPACING = 4; // metres deeper into the screen per lane
 export const LANE_STAGGER = 0; // no longitudinal offset between trains
 
+// Nothing caps how far ahead or behind a friend's train may get: everyone
+// shares one scrolling world, so a difference in focus is a gap along the
+// track, and a big enough difference means they are simply gone. DriftMarker
+// is what stands in for a train that has left the picture.
+//
+// A gap only says something while the two trains are running at different
+// speeds. Once they agree it is just where they happened to end up, so it
+// eases away and a friend who went missing during a bad stretch comes back
+// into frame during the next lull.
+// The rate is what you see: at the frame edge it works out around 3.6 m/s,
+// so a train comes back into shot at a walk and settles rather than snapping.
+// The cap only governs the part nobody watches — it takes over beyond
+// 62 m (MAX_SPEED / RATE), which is far outside the frame, so a friend who
+// went missing for minutes is back at the edge in under a minute instead of
+// never. Both are fictions in service of the scene staying useful; the gap
+// they undo was real.
+export const DRIFT_CLOSE_TOLERANCE = 1.5; // m/s apart before the easing stops
+export const DRIFT_CLOSE_RATE = 0.4; // per second: the proportional part
+export const DRIFT_CLOSE_MAX_SPEED = 25; // m/s, off-screen only
+
 // Track: railroad-straight.glb is 4 m long with its origin at one end and
 // sits 1 m below its origin (measured), so lifting it by 1 puts rail top at 0.1.
 export const TRACK_SEGMENT_LENGTH = 4;
@@ -60,6 +80,20 @@ export const CHARACTER_OFFSET: [number, number, number] = [-CARRIAGE_GAP, CARRIA
 export const CONDUCTOR_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIGHT + 0.4, 0];
 export const CONDUCTOR_SPRITE_URL = "/characters/conductor.png";
 export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
+
+// Drift marker: an arrowhead that rides the edge of the picture once a
+// friend's train has left it. Height clears the conductor sprite, which tops
+// out around LOCOMOTIVE_HEIGHT + 1.2.
+export const DRIFT_MARKER_OFFSET: [number, number, number] = [0, LOCOMOTIVE_HEIGHT + 1.9, 0];
+export const DRIFT_MARKER_RADIUS = 0.4;
+export const DRIFT_MARKER_HEIGHT = 0.85;
+export const DRIFT_MARKER_BOB = 0.18; // metres from centre to peak
+export const DRIFT_MARKER_BOB_SPEED = 2.4; // radians per second
+// How far inside the frame edge the marker sits, in metres at its own depth.
+// Wide enough for the arrowhead itself plus a little air.
+export const DRIFT_MARKER_EDGE_MARGIN = 0.9;
+export const DRIFT_AHEAD_COLOR = "#15803d"; // pulling away up front
+export const DRIFT_BEHIND_COLOR = "#b45309"; // dropping off the back
 
 // Camera
 export const CAMERA_POSITION: [number, number, number] = [-1.4, 5, -12];
