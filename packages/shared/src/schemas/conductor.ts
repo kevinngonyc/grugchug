@@ -86,6 +86,8 @@ export const routePlanSchema = z.object({
   id: z.string(),
   userId: z.string(),
   materialHash: z.string(),
+  // Sample content was used because a generation step failed. Absent on old plans.
+  usedFallback: z.boolean().optional(),
   totalEstimatedMinutes: z.number().positive(),
   stations: z.array(stationSchema).min(1).max(MAX_STATIONS),
 });

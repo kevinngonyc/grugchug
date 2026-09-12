@@ -1,7 +1,6 @@
-// localStorage for the study session, guarded the same way as
-// features/chat/storage.ts — a failure here just means "nothing stored",
-// never a thrown error. Only enough to resume is kept: the plan itself is
-// refetched by id, not persisted, so a stale copy can never be shown.
+// Run metadata for history bookkeeping. Refresh reads it only to close the
+// previous unfinished run, then clears it; it never resumes a route or timer.
+// Storage failures must not interrupt a study session.
 import type { SessionMode } from "./study-session";
 
 const STORAGE_KEY = "grugchug.conductor.session";

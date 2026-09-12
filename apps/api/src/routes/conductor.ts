@@ -86,18 +86,21 @@ async function buildStation(
   materials: readonly Material[],
   index: number,
   runGenerateQuestions: CreatePlanDeps["runGenerateQuestions"],
-): Promise<Station> {
+): Promise<{ station: Station; usedFallback: boolean }> {
   try {
     const result = await runGenerateQuestions({ scope: skeleton.scope, materials: [...materials] });
     return {
-      ...skeleton,
-      questions: result.output.questions.map((q, qi) => ({
-        ...q,
-        id: `${skeleton.id}-q${qi + 1}`,
-      })),
+      usedFallback: result.fellBackToFixture,
+      station: {
+        ...skeleton,
+        questions: result.output.questions.map((q, qi) => ({
+          ...q,
+          id: `${skeleton.id}-q${qi + 1}`,
+        })),
+      },
     };
   } catch {
-    return { ...skeleton, questions: fixtureQuestionsFor(index) };
+    return { station: { ...skeleton, questions: fixtureQuestionsFor(index) }, usedFallback: true };
   }
 }
 
@@ -110,13 +113,16 @@ export async function createPlanWithDeps(req: Request, deps: CreatePlanDeps): Pr
   const { userId, availableMinutes, materials } = body.data;
 
   const planResult = await deps.runPlanRoute({ materials, availableMinutes });
-  const stations = await Promise.all(
+  const builtStations = await Promise.all(
     planResult.output.stations.map((skeleton, i) =>
       buildStation(skeleton, materials, i, deps.runGenerateQuestions),
     ),
   );
 
+  const stations = builtStations.map((result) => result.station);
   const plan: RoutePlan = {
+    usedFallback:
+      planResult.fellBackToFixture || builtStations.some((result) => result.usedFallback),
     id: crypto.randomUUID(),
     userId,
     materialHash: materialHash(materials),

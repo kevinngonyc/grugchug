@@ -68,7 +68,15 @@ export function createVoiceAudio() {
   // Resume on a gesture too, so a blocked first announcement can be retried
   // with the dev panel. Never replay an old line when the context unlocks.
   const unlock = () => {
-    if (context?.state === "suspended") void context.resume().catch(() => {});
+    if (disposed) return;
+    try {
+      // Create the context during the gesture, before an asynchronous timer
+      // request returns and user activation expires.
+      context ??= new AudioContext();
+      if (context.state === "suspended") void context.resume().catch(() => {});
+    } catch {
+      // No audio support: the speech player still supplies timed captions.
+    }
   };
   window.addEventListener("pointerdown", unlock);
   window.addEventListener("keydown", unlock);

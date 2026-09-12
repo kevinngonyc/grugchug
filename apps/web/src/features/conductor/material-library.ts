@@ -4,6 +4,8 @@
 // rather than per file: pressing Study again reuses that route instead of
 // paying for a fresh plan-route + generate-questions run. Adding or removing
 // a file makes it a different set, so the remembered route is dropped.
+// Sample fallback routes are not remembered. Regenerate route explicitly
+// bypasses the saved plan while keeping the uploaded materials.
 // Guarded storage access, same pattern as features/chat/storage.ts.
 import type { Material } from "@grugchug/shared";
 import { create } from "zustand";
@@ -67,7 +69,7 @@ function writeLibrary(library: StoredLibrary): void {
 interface MaterialLibraryState extends StoredLibrary {
   add: (name: string, material: Material) => MaterialLibraryItem;
   remove: (id: string) => void;
-  setPlanId: (planId: string) => void;
+  setPlanId: (planId: string | null) => void;
 }
 
 export const useMaterialLibrary = create<MaterialLibraryState>()((set, get) => ({

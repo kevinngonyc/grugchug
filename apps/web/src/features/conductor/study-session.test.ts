@@ -175,6 +175,34 @@ describe("studyAll", () => {
     expect(useStudySession.getState().error).toBeNull();
   });
 
+  test("regeneration bypasses the remembered route without removing materials", async () => {
+    addTwoMaterials();
+    useMaterialLibrary.getState().setPlanId("old-light-route");
+    apiMocks.createPlan.mockResolvedValue(plan);
+    await useStudySession.getState().studyAll(true);
+    expect(apiMocks.getPlan).not.toHaveBeenCalled();
+    expect(apiMocks.createPlan).toHaveBeenCalledTimes(1);
+    expect(useMaterialLibrary.getState().items).toHaveLength(2);
+  });
+
+  test("a saved sample route is regenerated instead of reused", async () => {
+    addTwoMaterials();
+    useMaterialLibrary.getState().setPlanId("sample");
+    apiMocks.getPlan.mockResolvedValue({ ...plan, usedFallback: true });
+    apiMocks.createPlan.mockResolvedValue(plan);
+    await useStudySession.getState().studyAll();
+    expect(apiMocks.createPlan).toHaveBeenCalledTimes(1);
+    expect(useStudySession.getState().plan).toBe(plan);
+  });
+
+  test("sample content is shown but never remembered for reuse", async () => {
+    addTwoMaterials();
+    apiMocks.createPlan.mockResolvedValue({ ...plan, usedFallback: true });
+    await useStudySession.getState().studyAll();
+    expect(useStudySession.getState().plan?.usedFallback).toBe(true);
+    expect(useMaterialLibrary.getState().planId).toBeNull();
+  });
+
   test("does nothing with an empty library", async () => {
     await useStudySession.getState().studyAll();
 
@@ -553,5 +581,92 @@ describe("quit", () => {
     useStudySession.getState().quit();
 
     expect(historyMocks.endHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("fresh sessions and pending requests", () => {
+  test("refresh discards the saved route and timer and closes its history once", async () => {
+    localStorage.setItem(
+      "grugchug.conductor.session",
+      JSON.stringify({
+        planId: "old-plan",
+        stationIndex: 1,
+        mode: "counting",
+        timerEndsAt: Date.now() + 60000,
+        historyId: "old-history",
+      }),
+    );
+    localStorage.setItem("grugchug.conductor.library", "keep materials");
+    await Promise.all([useStudySession.getState().hydrate(), useStudySession.getState().hydrate()]);
+    expect(useStudySession.getState()).toMatchObject({
+      mode: "idle",
+      plan: null,
+      timerEndsAt: null,
+    });
+    expect(apiMocks.getPlan).not.toHaveBeenCalled();
+    expect(historyMocks.endHistory).toHaveBeenCalledTimes(1);
+    expect(historyMocks.endHistory).toHaveBeenCalledWith("old-history", "quit");
+    expect(localStorage.getItem("grugchug.conductor.session")).toBeNull();
+    expect(localStorage.getItem("grugchug.conductor.library")).toBe("keep materials");
+  });
+
+  test("break speaks before the timer responds, and quit prevents the late response restarting it", async () => {
+    let resolve = (_value: { minutes: number; message: string }) => {};
+    apiMocks.setTimer.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "at-station", historyId: "h1" });
+    const pending = useStudySession.getState().chooseBreak();
+    expect(speechOf()?.audioUrl).toBe(VOICE_LINES.takeBreak.audioUrl);
+    useStudySession.getState().quit();
+    expect(speechOf()?.audioUrl).toBe(VOICE_LINES.greatSession.audioUrl);
+    resolve({ minutes: 5, message: "Rest" });
+    await pending;
+    expect(useStudySession.getState()).toMatchObject({
+      mode: "idle",
+      plan: null,
+      timerEndsAt: null,
+    });
+    expect(speechOf()?.audioUrl).toBe(VOICE_LINES.greatSession.audioUrl);
+    expect(localStorage.getItem("grugchug.conductor.session")).toBeNull();
+  });
+
+  test("a late timer error cannot repopulate a quit session", async () => {
+    let reject = (_error: Error) => {};
+    apiMocks.setTimer.mockImplementation(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    useStudySession.getState().startSession(plan);
+    const pending = useStudySession.getState().startStudying();
+    useStudySession.getState().quit();
+    reject(new Error("network failed"));
+    await pending;
+    expect(useStudySession.getState()).toMatchObject({ mode: "idle", error: null, busy: false });
+  });
+
+  test("a history record created after quitting is closed without restoring session state", async () => {
+    let resolve = (_id: string) => {};
+    apiMocks.setTimer.mockResolvedValue({ minutes: 10, message: "Go" });
+    historyMocks.startHistory.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    useStudySession.getState().startSession(plan);
+    const pending = useStudySession.getState().startStudying();
+    await flush();
+    useStudySession.getState().quit();
+    resolve("late-history");
+    await pending;
+    expect(historyMocks.endHistory).toHaveBeenCalledWith("late-history", "quit");
+    expect(useStudySession.getState()).toMatchObject({ plan: null, historyId: null });
   });
 });

@@ -2,7 +2,15 @@ import { z } from "zod";
 
 // The drawings in apps/web/public/characters/. Adding one means adding its id
 // here, its PNG there, and its display name in features/profile/avatars.ts.
-export const avatarIdSchema = z.enum(["conductor", "bonbon", "poku", "cat", "doug"]);
+export const avatarIdSchema = z.enum([
+  "conductor",
+  "bonbon",
+  "poku",
+  "cat",
+  "doug",
+  "bbob",
+  "bilby",
+]);
 export type AvatarId = z.infer<typeof avatarIdSchema>;
 
 // Identified by the browser, not an account: the web mints `id` once and keeps
