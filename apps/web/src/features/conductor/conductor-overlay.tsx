@@ -5,28 +5,32 @@
 //
 // Three pieces once open: a general Q&A panel on the left (features/scene
 // keeps the conductor sprite visible in the gap between the two), the
-// study-plan panel on the right, and a small break/quit control strip below
-// it. plan lives here, not in ConductorPanel, because the ask panel needs it
-// too — Stage C will likely absorb this into a fuller session hook.
-import type { PublicRoutePlan } from "@grugchug/shared";
-import { useState } from "react";
+// study-plan / station panel on the right, and a small break/quit control
+// strip below it. The study session's state (plan, timer, station, answers)
+// lives in study-session.ts, not here — this just hydrates it once and runs
+// its one-second tick.
+import { useEffect } from "react";
 import { AskPanel } from "./ask-panel";
 import { ConductorPanel } from "./conductor-panel";
 import { SessionControls } from "./session-controls";
 import { useConductorUi } from "./store";
+import { useStudySession } from "./study-session";
 
 const panelCardClass =
   "overflow-hidden rounded-2xl border border-border/40 bg-background/55 shadow-xl backdrop-blur-md";
 
 export function ConductorOverlay() {
   const open = useConductorUi((s) => s.open);
-  const close = useConductorUi((s) => s.closePanel);
-  const [plan, setPlan] = useState<PublicRoutePlan | null>(null);
+  const plan = useStudySession((s) => s.plan);
 
-  const onQuit = () => {
-    setPlan(null);
-    close();
-  };
+  useEffect(() => {
+    void useStudySession.getState().hydrate();
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => useStudySession.getState().tick(), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <>
@@ -45,14 +49,9 @@ export function ConductorOverlay() {
         className={`absolute inset-y-4 right-4 z-10 ${open ? "flex" : "hidden"} w-[min(30rem,calc(45%-2rem))] flex-col gap-2`}
       >
         <div className={`flex min-h-0 flex-1 flex-col ${panelCardClass}`}>
-          <ConductorPanel
-            plan={plan}
-            onPlanCreated={setPlan}
-            onStartOver={() => setPlan(null)}
-            onClose={close}
-          />
+          <ConductorPanel />
         </div>
-        <SessionControls plan={plan} onQuit={onQuit} />
+        <SessionControls />
       </div>
     </>
   );
