@@ -13,6 +13,7 @@ import { useEfficiency } from "@/features/efficiency";
 import { VOICE_LINES } from "@/features/speech";
 import { useWorld } from "@/features/world";
 
+const { ConductorApiError } = await import("./request");
 const realApi = await import("./api");
 const realHistory = await import("./history");
 
@@ -205,9 +206,9 @@ describe("studyAll", () => {
   });
 
   test("shows the server's reason when the route cannot be built", async () => {
-    const failure = Object.assign(
-      new Error("AI provider unavailable: GROQ_FLASH_MODEL is not set"),
-      { name: "ConductorApiError" },
+    const failure = new ConductorApiError(
+      "AI provider unavailable: GROQ_FLASH_MODEL is not set",
+      500,
     );
     apiMocks.createPlan.mockRejectedValue(failure);
     addTwoMaterials();
@@ -225,6 +226,16 @@ describe("studyAll", () => {
 
     expect(apiMocks.createPlan).not.toHaveBeenCalled();
     expect(useStudySession.getState().plan).toBeNull();
+  });
+
+  test("shows the actionable API failure instead of a generic route error", async () => {
+    apiMocks.createPlan.mockRejectedValue(
+      new ConductorApiError("The study server is unavailable.", 502),
+    );
+    addTwoMaterials();
+    await useStudySession.getState().studyAll();
+    expect(useStudySession.getState().error).toBe("The study server is unavailable.");
+    expect(useStudySession.getState().busy).toBe(false);
   });
 
   test("surfaces an error when the route cannot be built", async () => {

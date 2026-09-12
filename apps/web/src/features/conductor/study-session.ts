@@ -20,6 +20,7 @@ import { getUserId } from "@/lib/user-id";
 import { createPlan, evaluateProgress, getPlan, setTimer, submitAnswer } from "./api";
 import { endHistory, recordHistory, startHistory } from "./history";
 import { useMaterialLibrary } from "./material-library";
+import { ConductorApiError } from "./request";
 import { clearSession, readSession, writeSession } from "./session-storage";
 import { useConductorUi } from "./store";
 
@@ -184,14 +185,14 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     } catch (error) {
       if (revision !== sessionRevision) return;
       // The API says why ("AI provider unavailable: GROQ_FLASH_MODEL is not
-      // set"); a network failure has nothing better than the generic line.
-      // Matched by name, not instanceof, so this module needs only ./api's
-      // functions.
-      const reason =
-        error instanceof Error && error.name === "ConductorApiError" ? error.message : null;
+      // set") and the transport explains connectivity failures; anything
+      // else gets the generic line.
       set({
         busy: false,
-        error: reason ?? "Could not build a route from your materials. Try again.",
+        error:
+          error instanceof ConductorApiError
+            ? error.message
+            : "Could not build a route from your materials. Try again.",
       });
     }
   },

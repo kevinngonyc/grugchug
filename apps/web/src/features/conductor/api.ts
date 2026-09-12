@@ -21,39 +21,9 @@ import {
   setTimerResponseSchema,
 } from "@grugchug/shared";
 
-interface ResponseParser<T> {
-  parse: (value: unknown) => T;
-}
+import { request } from "./request";
 
-export class ConductorApiError extends Error {
-  readonly status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-    this.name = "ConductorApiError";
-  }
-}
-
-async function request<T>(
-  path: string,
-  schema: ResponseParser<T>,
-  init: RequestInit = {},
-): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: { "content-type": "application/json", ...init.headers },
-  });
-
-  if (!res.ok) {
-    const detail = await res
-      .json()
-      .then((body: { error?: string }) => body.error)
-      .catch(() => undefined);
-    throw new ConductorApiError(detail ?? `request failed (${res.status})`, res.status);
-  }
-  return schema.parse(await res.json());
-}
+export { ConductorApiError } from "./request";
 
 export function createPlan(body: CreatePlanRequest): Promise<PublicRoutePlan> {
   return request("/conductor/plans", publicRoutePlanSchema, {
