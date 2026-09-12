@@ -12,6 +12,13 @@ export default defineConfig({
     // The API runs on its own port in dev; keep the browser same-origin.
     // ws: true is what makes the chat socket at /api/chat/ws upgrade through
     // the proxy instead of being served as a plain HTTP request.
-    proxy: { "/api": { target: "http://localhost:3000", ws: true } },
+    host: true, // Listens on all local IP addresses
+    strictPort: true,
+    cors: true,      // Ensures assets can cross network ports safely
+    hmr: {
+      host: 'localhost', // Keeps hot-reloading stable on your local machine
+      clientPort: 5173, // Forces Hot Module Replacement to use the correct port
+    },
+    proxy: { "/api": { target: "http://0.0.0.0:3000", ws: true } },
   },
 });

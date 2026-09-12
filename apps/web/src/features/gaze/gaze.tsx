@@ -1,5 +1,7 @@
-import webgazer from "@webgazer-ts/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+// Face prediction temporarily disabled.
+// import { FacePrediction } from "./face-prediction";
+import { faceTracker } from "./face-tracker";
 
 interface GazeProps {
   /** How long you have to be turned away before we say so. Default: 2000ms. */
@@ -32,8 +34,8 @@ interface GazeProps {
    */
   onLookingAwayChange?: (lookingAway: boolean) => void;
   /**
-   * Show live head-pose numbers under the message, and WebGazer's own webcam
-   * preview — video, cyan face mesh, feedback box — for tuning the thresholds
+   * Show live head-pose numbers under the message, and the webcam
+   * preview — for tuning the thresholds
    * above. Off by default: during a session the camera view is a distraction,
    * and nothing here needs it on screen. Tracking runs either way.
    */
@@ -76,28 +78,13 @@ const SAMPLE_INTERVAL_MS = 200;
 // is really there. 3 ticks is 600ms, comfortably longer than a blink.
 const MISS_TOLERANCE = 3;
 
-// WebGazer is one camera and one face model per page, however many times
-// React mounts this component (StrictMode mounts twice in dev; changing a
-// threshold re-runs the effect). It is started once and shared, and ended
-// only once nobody is using it — ending it under a mount that has just
-// started would leave that mount reading a dead tracker.
-//
-// Its own loop keeps face mesh running continuously on the main thread,
-// which is the accuracy this component is built on: sampling it (rather
-// than driving detection ourselves at a lower rate) is what keeps tracking
-// stable, since a redetect after a gap is measurably less reliable than one
-// that runs every frame. Stored click data and gaze regression are unused,
-// so those are disabled instead.
+// One camera and continuous MediaPipe detection loop shared across mounts.
 let trackerReady: Promise<void> | null = null;
 let trackerUsers = 0;
 
 function startTracker(): Promise<void> {
   trackerReady ??= (async () => {
-    // Stored click data and the mouse listeners only ever feed the gaze
-    // regression, which nothing here reads.
-    await webgazer.saveDataAcrossSessions(false);
-    await webgazer.begin();
-    webgazer.removeMouseEventListeners();
+    await faceTracker.begin();
   })().catch((error: unknown) => {
     // Let the next mount try again (a camera permission granted later).
     trackerReady = null;
@@ -114,7 +101,7 @@ function releaseTracker(): void {
     () => {
       if (trackerUsers > 0 || trackerReady !== ready) return;
       trackerReady = null;
-      webgazer.end();
+      faceTracker.end();
     },
     () => {},
   );
@@ -208,7 +195,7 @@ export function Gaze({
   const referenceWidthRef = useRef<number | null>(null);
   const missesRef = useRef(0);
   // Held in refs so a caller passing an inline arrow does not restart
-  // WebGazer — and the camera — on every render.
+  // MediaPipe — and the camera — on every render.
   const onFacingRef = useRef(onFacing);
   onFacingRef.current = onFacing;
   const onLookingAwayChangeRef = useRef(onLookingAwayChange);
@@ -226,15 +213,7 @@ export function Gaze({
   }, []);
 
   useEffect(() => {
-    // Set before begin(): the renderers read these when they are created, so
-    // the preview never flashes up on the way to being hidden. The gaze dot
-    // stays off in either mode — this component reads head pose from the
-    // landmarks and never uses WebGazer's on-screen prediction.
-    webgazer
-      .showVideoPreview(debug)
-      .showFaceOverlay(debug)
-      .showFaceFeedbackBox(debug)
-      .showPredictionPoints(false);
+    faceTracker.showVideoPreview(debug);
 
     let disposed = false;
     let ready = false;
@@ -253,7 +232,7 @@ export function Gaze({
     };
 
     const sample = () => {
-      const positions = webgazer.getTracker()?.getPositions() ?? null;
+      const positions = faceTracker.getPositions();
       const pose = positions ? computeHeadPose(positions) : null;
 
       let facing = false;
@@ -359,11 +338,11 @@ export function Gaze({
     const onVisibility = () => {
       if (document.hidden) {
         stopSampling();
-        webgazer.pause();
+        faceTracker.pause();
         markAway();
       } else if (ready) {
-        void webgazer.resume().then(() => {
-          if (!document.hidden) startSampling();
+        void faceTracker.resume().then(() => {
+          if (!disposed && !document.hidden) startSampling();
         });
       }
     };
@@ -374,15 +353,15 @@ export function Gaze({
         if (disposed) return;
         ready = true;
         if (document.hidden) {
-          webgazer.pause();
+          faceTracker.pause();
           markAway();
         } else {
           startSampling();
         }
       },
       () => {
-        // No camera (permission denied, none attached): WebGazer has already
-        // logged why, and without samples the learner reads as away.
+        // The prediction panel shows the camera/model error.
+        if (!disposed) markAway();
       },
     );
     document.addEventListener("visibilitychange", onVisibility);
@@ -405,6 +384,7 @@ export function Gaze({
   return (
     <div style={{ padding: 16, fontFamily: "monospace" }}>
       <div>{lookingAway ? "Looking away from the screen" : "Looking at the screen"}</div>
+      {/* <FacePrediction /> */}
       {debug && debugInfo && (
         <pre style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
           {JSON.stringify(

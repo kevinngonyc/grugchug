@@ -125,3 +125,6 @@ apps/api/data/
 # Claude Code worktrees (linked checkouts, never committed)
 .claude/worktrees/
 .superpowers/
+
+# Generated from ml/ and installed browser runtimes by prepare-face-assets.ts.
+/apps/web/public/face-models/
