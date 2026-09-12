@@ -2,7 +2,7 @@
 // now, and Express/Hono/Elysia can be mounted here later if the app outgrows it.
 
 import { chatWebSocket } from "./chat/hub";
-import { getDb } from "./db";
+import { getDatabase } from "./db";
 import { chatSocketRoute, joinRoomRoute, listMessagesRoute, myRoomRoute } from "./routes/chat";
 import {
   answerStation,
@@ -14,11 +14,11 @@ import {
 } from "./routes/conductor";
 import { health } from "./routes/health";
 import { createUserRoutes } from "./routes/users";
-import { mongoUserRepo } from "./users-repo";
+import { sqliteUserRepo } from "./users-repo";
 
 const port = Number(process.env.PORT ?? 3000);
 
-const users = createUserRoutes(mongoUserRepo(getDb));
+const users = createUserRoutes(sqliteUserRepo(getDatabase()));
 
 const server = Bun.serve({
   port,
