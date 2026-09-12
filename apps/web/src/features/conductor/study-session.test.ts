@@ -498,6 +498,49 @@ describe("chooseBreak", () => {
   });
 });
 
+describe("endBreak", () => {
+  test("cut short mid-study, the rest of the stretch still resumes", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 20, message: "Rest up" });
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() + 10 * 60_000 });
+    await useStudySession.getState().chooseBreak();
+
+    useStudySession.getState().endBreak();
+    applyStudyPhase();
+
+    const s = useStudySession.getState();
+    expect(s.mode).toBe("counting");
+    expect(s.pausedStudyMs).toBeNull();
+    expect((s.timerEndsAt ?? 0) - Date.now()).toBeGreaterThan(9 * 60_000);
+    expect(useWorld.getState().trains.local?.phase).toBe("running");
+  });
+
+  test("cut short at a station, it returns to the station", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 20, message: "Rest up" });
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "at-station" });
+    await useStudySession.getState().chooseBreak();
+
+    useStudySession.getState().endBreak();
+
+    const s = useStudySession.getState();
+    expect(s.mode).toBe("at-station");
+    expect(s.timerEndsAt).toBeNull();
+  });
+
+  test("does nothing when no break is running", () => {
+    useStudySession.getState().startSession(plan);
+    const endsAt = Date.now() + 10 * 60_000;
+    useStudySession.setState({ mode: "counting", timerEndsAt: endsAt });
+
+    useStudySession.getState().endBreak();
+
+    const s = useStudySession.getState();
+    expect(s.mode).toBe("counting");
+    expect(s.timerEndsAt).toBe(endsAt);
+  });
+});
+
 describe("chooseKeepStudying", () => {
   test("says the restart-study line", async () => {
     apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Again" });
