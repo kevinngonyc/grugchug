@@ -60,6 +60,17 @@ export const CONDUCTOR_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIG
 export const CONDUCTOR_SPRITE_URL = "/characters/conductor.png";
 export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
 
+// Speech. The bubble's tail sits this far above the sprite's centre. drei
+// scales the bubble by BUBBLE_DISTANCE_FACTOR / (2 * tan(fov/2) * distance);
+// with the camera about 12.5 m from lane 0 that is roughly 1x there and a
+// little smaller on farther lanes. Tune by eye in the dev panel.
+export const BUBBLE_OFFSET: [number, number, number] = [0, CHARACTER_SIZE[1] / 2 + 0.15, 0];
+export const BUBBLE_DISTANCE_FACTOR = 8;
+// The conductor bobs while its train has speech.
+export const BOB_AMPLITUDE = 0.12; // metres
+export const BOB_FREQUENCY = 9; // radians per second, about 1.4 bobs a second
+export const BOB_EASE = 6; // per second; how quickly the bob fades in and out
+
 // Camera
 export const CAMERA_POSITION: [number, number, number] = [-1.4, 5, -12];
 export const CAMERA_LOOK_AT: [number, number, number] = [-1.4, 1.2, 1];

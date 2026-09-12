@@ -1,10 +1,18 @@
 import { useEffect, useRef } from "react";
 import { effectiveWeight, useEfficiency } from "@/features/efficiency";
+import { VOICE_LINES } from "@/features/speech";
 import { type TrainPhase, useWorld } from "@/features/world";
 import { cn } from "@/lib/utils";
 
 const FRIEND_NAMES = ["Ada", "Grace", "Linus", "Margaret", "Dennis"];
 const PHASES: TrainPhase[] = ["running", "stopped", "finished"];
+const CHATTER = [
+  "All aboard!",
+  "Nice pace back there.",
+  "Anyone else hear that whistle?",
+  "Next stop: a five minute break.",
+  "Eyes on the page, not the scenery.",
+];
 
 // A dev-only signal, reported through the same API a quiz would use. Its
 // weight dwarfs attention's 1, so dragging the slider effectively pins the
@@ -23,10 +31,13 @@ export function SessionDevPanel() {
   const trainCount = useWorld((s) => Object.keys(s.trains).length);
   const timers = useRef<ReturnType<typeof setInterval>[]>([]);
   const friendCounter = useRef<number>(0);
+  const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const chatterCounter = useRef<number>(0);
 
   useEffect(() => {
     return () => {
       for (const t of timers.current) clearInterval(t);
+      for (const t of timeouts.current) clearTimeout(t);
     };
   }, []);
 
@@ -60,10 +71,30 @@ export function SessionDevPanel() {
     timers.current.push(timer);
   };
 
+  // Every train says a line in turn, 1.5 s apart. The local conductor says the
+  // start-of-session voice line with its clip (a click is a user gesture, so
+  // the browser allows the audio); friends say canned text lines, which
+  // exercise the fallback timer.
+  const chatter = () => {
+    const ids = Object.keys(useWorld.getState().trains);
+    const offset = chatterCounter.current++;
+    ids.forEach((id, i) => {
+      const speak = () => {
+        if (id === localTrainId) {
+          const line = VOICE_LINES.startSession;
+          useWorld.getState().say(id, line.text, line.audioUrl);
+          return;
+        }
+        useWorld.getState().say(id, CHATTER[(i + offset) % CHATTER.length] ?? "All aboard!");
+      };
+      timeouts.current.push(setTimeout(speak, i * 1500));
+    });
+  };
+
   return (
     <div
       className={cn(
-        "absolute top-4 right-4 flex w-56 flex-col gap-3",
+        "absolute top-4 right-4 z-20 flex w-56 flex-col gap-3",
         "rounded-lg border bg-background/90 p-4 text-sm shadow",
       )}
     >
@@ -128,6 +159,9 @@ export function SessionDevPanel() {
       </div>
       <button type="button" onClick={addFriend} className="rounded border px-2 py-1">
         add friend train ({trainCount - 1})
+      </button>
+      <button type="button" onClick={chatter} className="rounded border px-2 py-1">
+        chatter
       </button>
     </div>
   );

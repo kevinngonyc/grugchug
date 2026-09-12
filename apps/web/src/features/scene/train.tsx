@@ -51,7 +51,7 @@ export function Train({ trainId, motion }: TrainProps) {
       </group>
       <Smoke motion={motion} />
       <Suspense fallback={null}>
-        <Character url={CONDUCTOR_SPRITE_URL} position={CONDUCTOR_OFFSET} />
+        <Character url={CONDUCTOR_SPRITE_URL} position={CONDUCTOR_OFFSET} trainId={trainId} />
       </Suspense>
       {spriteUrl ? (
         <Suspense fallback={null}>

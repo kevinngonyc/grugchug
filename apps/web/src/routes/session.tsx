@@ -5,6 +5,7 @@ import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/e
 import { Gaze } from "@/features/gaze";
 import { TrainWorld } from "@/features/scene";
 import { useEfficiencyDrive } from "@/features/session";
+import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
 import { useWorld } from "@/features/world";
 import { SessionDevPanel } from "./session-dev-panel";
 
@@ -17,6 +18,9 @@ export function Session() {
   // Gaze reports attention, the quiz will report its own signal, and this
   // hands whatever they add up to on to the train.
   useEfficiencyDrive();
+  // Conductors: play each utterance's clip and announce departures.
+  useSpeechPlayer();
+  useDepartureAnnouncer();
 
   useEffect(() => {
     if (localTrainId !== null) return;
