@@ -1,10 +1,10 @@
 {
   "name": "grugchug",
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "typescript": "^6"
+  },
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
     "dev": "bun run --filter './apps/*' dev",
     "build": "bun run --filter './apps/*' build",
@@ -13,11 +13,8 @@
     "lint": "biome check .",
     "fmt": "biome check --write ."
   },
-  "devDependencies": {
-    "@biomejs/biome": "^2",
-    "typescript": "^6"
-  },
-  "dependencies": {
-    "@webgazer-ts/core": "^0.2.0"
-  }
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

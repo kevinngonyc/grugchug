@@ -1,7 +1,12 @@
 // HTTP client for chat. Responses are parsed with the shared schemas so a
 // drifting API surfaces here rather than deep inside a component.
 import type { ChatMessage, MessagesResponse, RoomResponse } from "@grugchug/shared";
-import { CHAT_USER_HEADER, messagesResponseSchema, roomResponseSchema } from "@grugchug/shared";
+import {
+  CHAT_USER_HEADER,
+  inviteHostResponseSchema,
+  messagesResponseSchema,
+  roomResponseSchema,
+} from "@grugchug/shared";
 
 /**
  * Just enough of a zod schema to validate a response. Structural rather than
@@ -100,6 +105,12 @@ export function chatSocketUrl(roomId: string, userId: string): string {
  * The only way into someone else's room: opening it joins and lands you in the
  * session, so there is no code to read out and nothing to type.
  */
-export function inviteLink(inviteCode: string): string {
-  return `${window.location.origin}/chat/join/${inviteCode}`;
+export async function inviteLink(inviteCode: string, signal?: AbortSignal): Promise<string> {
+  const { hostname } = await request("/chat/invite-host", inviteHostResponseSchema, {
+    signal: signal ?? AbortSignal.timeout(5_000),
+  });
+  const url = new URL(`/chat/join/${encodeURIComponent(inviteCode)}`, window.location.origin);
+  // Keep Vite/the public frontend's port and protocol, not the API's port.
+  url.hostname = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
+  return url.href;
 }

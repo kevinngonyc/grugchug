@@ -1,5 +1,5 @@
-// Eye tracking. Reads the webcam, estimates where on the viewport the user is
-// looking, and turns that into GazeSample values and attention metrics.
+// Shared MediaPipe webcam landmarks drive head-pose attention and local ONNX
+// face predictions. Predictions are display-only; attention owns the focus signal.
 // Everything exported from here must work without the 3D scene.
 export type { GazeSample } from "@grugchug/shared";
 
