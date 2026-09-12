@@ -7,7 +7,7 @@ export type AudioLike = {
   play(): Promise<void>;
   pause(): void;
   dispose?(): void;
-  addEventListener(type: "ended" | "error", listener: () => void): void;
+  addEventListener(type: "ended" | "error" | "playing", listener: () => void): void;
 };
 
 export type SpeechPlayerDeps = {
@@ -84,6 +84,13 @@ export function createSpeechPlayer(deps: SpeechPlayerDeps): SpeechPlayer {
       if (playing.get(trainId) !== entry || entry.timer !== null) return;
       entry.timer = startTimer(trainId, speech);
     };
+    // Playback can recover after a transient media error. Once it is audible,
+    // the clip's ended event owns the bubble and animation lifetime again.
+    audio.addEventListener("playing", () => {
+      if (playing.get(trainId) !== entry || entry.timer === null) return;
+      deps.clearTimeout(entry.timer);
+      entry.timer = null;
+    });
     audio.addEventListener("error", fallBack);
     audio.play().catch(fallBack);
   };
@@ -96,7 +103,7 @@ export function createSpeechPlayer(deps: SpeechPlayerDeps): SpeechPlayer {
     }
     // Trains that vanished take their clips with them.
     for (const trainId of [...playing.keys()]) {
-      if (!trains[trainId]) stopTrain(trainId);
+      if (trains[trainId]?.speech?.id !== playing.get(trainId)?.speechId) stopTrain(trainId);
     }
   };
 

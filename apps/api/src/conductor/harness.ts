@@ -195,7 +195,11 @@ async function attemptOnce<TInput, TOutput>(
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(result.text);
+      // Accept a single Markdown wrapper, but never repair malformed or
+      // truncated JSON or extract an arbitrary object from surrounding prose.
+      const text = result.text.trim();
+      const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/i.exec(text);
+      parsed = JSON.parse(fenced?.[1] ?? text);
     } catch (error) {
       return {
         ok: false,
@@ -344,7 +348,7 @@ export async function runTool<TInput, TOutput>(
   const escalation = await attemptOnce(
     resolveProvider,
     spec,
-    basePrompt,
+    lastError === undefined ? basePrompt : [...basePrompt, feedbackPart(lastError)],
     timeoutMs,
     "pro",
     1,

@@ -173,7 +173,7 @@ export function createVoiceAudio() {
           return audio.play();
         },
         pause: () => audio.pause(),
-        addEventListener: (type: "ended" | "error", listener: () => void) =>
+        addEventListener: (type: "ended" | "error" | "playing", listener: () => void) =>
           audio.addEventListener(type, listener),
         dispose: () => voice.dispose(),
       };
