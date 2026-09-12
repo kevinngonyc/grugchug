@@ -74,6 +74,7 @@ export function partyTrains(
       owner: { name: member.displayName, spriteUrl: spriteForUserId(member.userId) },
       phase: "running" as const,
       efficiency: Math.min(1, Math.max(0, member.efficiency)),
+      focusedSeconds: Math.max(0, member.focusedSeconds ?? 0),
       lane: index + 1,
     }));
 }

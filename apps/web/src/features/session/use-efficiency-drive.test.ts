@@ -4,6 +4,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { ATTENTION_HALF_LIFE_MS, EFFICIENCY_SCORE_MAX, useEfficiency } from "@/features/efficiency";
 import { MAX_SPEED, MIN_SPEED, targetSpeed, useWorld } from "@/features/world";
+import { resetFocusClock } from "./focus-time";
 import { driveEfficiencyOnce } from "./use-efficiency-drive";
 
 const NOW = 1_757_000_000_000;
@@ -16,6 +17,8 @@ function localTrain() {
 }
 
 beforeEach(() => {
+  localStorage.removeItem("grugchug.focus.today");
+  resetFocusClock();
   useEfficiency.getState().reset();
   useWorld.setState({ trains: {}, localTrainId: null });
   useWorld.getState().addTrain({
@@ -85,6 +88,15 @@ test("a stopped train stays stopped however good the score is", () => {
 
   expect(localTrain().efficiency).toBeCloseTo(1, 6);
   expect(targetSpeed(localTrain())).toBe(0);
+});
+
+test("the local train banks focused time at the rate of its score", () => {
+  useEfficiency.getState().reportAttention(true, NOW);
+  driveEfficiencyOnce(NOW);
+  driveEfficiencyOnce(NOW + 500);
+  driveEfficiencyOnce(NOW + 1000);
+
+  expect(localTrain().focusedSeconds).toBeCloseTo(1, 2);
 });
 
 test("no local train is not an error", () => {

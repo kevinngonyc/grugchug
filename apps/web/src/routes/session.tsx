@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { ChatOverlay, readIdentity } from "@/features/chat";
 import { ConductorOverlay } from "@/features/conductor";
 import { efficiencyFraction } from "@/features/efficiency";
+import { FocusBoard } from "@/features/leaderboard";
 import { profileOwner, useProfile } from "@/features/profile";
 import { createVoiceAudio, TrainWorld } from "@/features/scene";
 import { useEfficiencyDrive, usePartyTrains } from "@/features/session";
@@ -70,6 +71,7 @@ export function Session() {
     <div className="absolute inset-0">
       <TrainWorld />
       {dev ? <SessionDevPanel /> : null}
+      <FocusBoard />
       <FocusHud debug={dev} />
       <ChatOverlay />
       <ConductorOverlay />

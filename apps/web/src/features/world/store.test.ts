@@ -64,6 +64,15 @@ describe("useWorld", () => {
     expect(useWorld.getState().trains.local?.efficiency).toBe(1);
   });
 
+  test("sets banked focus time, never below zero", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.setFocusedSeconds("local", 90);
+    expect(useWorld.getState().trains.local?.focusedSeconds).toBe(90);
+    w.setFocusedSeconds("local", -5);
+    expect(useWorld.getState().trains.local?.focusedSeconds).toBe(0);
+  });
+
   test("ignores commands for unknown trains", () => {
     useWorld.getState().setPhase("ghost", "running");
     expect(useWorld.getState().trains).toEqual({});

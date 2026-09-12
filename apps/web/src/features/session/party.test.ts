@@ -30,6 +30,15 @@ describe("partyTrains", () => {
     expect(train?.phase).toBe("running");
   });
 
+  test("carries the focus time they banked, and none when an old client sent none", () => {
+    const [banked, silent] = partyTrains(
+      [{ ...member("ada"), focusedSeconds: 125 }, member("bo")],
+      "me",
+    );
+    expect(banked?.focusedSeconds).toBe(125);
+    expect(silent?.focusedSeconds).toBe(0);
+  });
+
   test("a signed-out visitor sees everyone, since nobody is them", () => {
     expect(partyTrains([member("ada"), member("bo")], null)).toHaveLength(2);
   });

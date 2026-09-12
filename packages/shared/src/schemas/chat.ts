@@ -69,11 +69,14 @@ export const chatMessageSchema = z.object({
 // Who is connected to the room right now, and how their study is going. This
 // is never stored: it is derived from the open sockets and dies with them.
 // `efficiency` is the 0..1 study score, the same number a train runs on, so a
-// friend's train can pull ahead or fall behind on screen.
+// friend's train can pull ahead or fall behind on screen. `focusedSeconds` is
+// the focused time they have banked today, as their own client counts it, so
+// every screen's leaderboard agrees. Optional so an older client still parses.
 export const chatPresenceMemberSchema = z.object({
   userId: userIdSchema,
   displayName: displayNameSchema,
   efficiency: z.number().min(0).max(1),
+  focusedSeconds: z.number().nonnegative().optional(),
 });
 
 export type ChatRoom = z.infer<typeof chatRoomSchema>;
@@ -142,6 +145,7 @@ export const clientChatEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("focus"),
     efficiency: z.number().min(0).max(1),
+    focusedSeconds: z.number().nonnegative().optional(),
   }),
 ]);
 

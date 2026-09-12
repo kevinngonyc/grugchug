@@ -18,6 +18,7 @@ export type WorldState = {
   setOwner: (id: string, owner: TrainOwner) => void;
   setPhase: (id: string, phase: TrainPhase) => void;
   setEfficiency: (id: string, efficiency: number) => void;
+  setFocusedSeconds: (id: string, focusedSeconds: number) => void;
   say: (id: string, text: string, audioUrl?: string) => void;
   clearSpeech: (id: string, speechId: string) => void;
   applySnapshot: (snapshot: Pick<WorldSnapshot, "trains">) => void;
@@ -56,6 +57,9 @@ export const useWorld = create<WorldState>()((set) => ({
         efficiency: Math.min(1, Math.max(0, efficiency)),
       }),
     ),
+
+  setFocusedSeconds: (id, focusedSeconds) =>
+    set((s) => patchTrain(s, id, { focusedSeconds: Math.max(0, focusedSeconds) })),
 
   // One utterance per train. A new line replaces whatever was up.
   say: (id, text, audioUrl) =>
