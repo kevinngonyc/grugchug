@@ -1,13 +1,14 @@
 import { beforeEach, expect, test } from "bun:test";
-import type { ChatIdentity, ChatPresenceMember } from "@/features/chat";
+import type { ChatPresenceMember } from "@/features/chat";
+import { useEfficiency } from "@/features/efficiency";
 import { useWorld } from "@/features/world";
 import { partyTrainId } from "./party";
 import { syncPartyTrains } from "./use-party-trains";
 
-const identity: ChatIdentity = { userId: "self", displayName: "Cat rider" };
+const SELF = "conn-self";
 const roster: ChatPresenceMember[] = [
-  { ...identity, efficiency: 0.5 },
-  { userId: "friend", displayName: "Friend", efficiency: 0.6 },
+  { connectionId: SELF, userId: "self", displayName: "Cat rider", efficiency: 0.5 },
+  { connectionId: "conn-friend", userId: "friend", displayName: "Friend", efficiency: 0.6 },
 ];
 
 beforeEach(() => {
@@ -24,25 +25,25 @@ beforeEach(() => {
 });
 
 test("presence updates the local chat name without replacing the chosen avatar", () => {
-  const known = syncPartyTrains(roster, identity, new Set());
+  const known = syncPartyTrains(roster, SELF, new Set());
   expect(useWorld.getState().trains.local?.owner).toEqual({
     name: "Cat rider",
     spriteUrl: "/characters/cat.png",
   });
   useWorld.getState().setOwner("local", { name: "Cat rider", spriteUrl: "/characters/doug.png" });
-  syncPartyTrains(roster, identity, known);
+  syncPartyTrains(roster, SELF, known);
   expect(useWorld.getState().trains.local?.owner.spriteUrl).toBe("/characters/doug.png");
 });
 
 test("a friend's focus update preserves their active speech without regrouping", () => {
-  const known = syncPartyTrains(roster, identity, new Set());
-  const id = partyTrainId("friend");
+  const known = syncPartyTrains(roster, SELF, new Set());
+  const id = partyTrainId("conn-friend");
   useWorld.getState().say(id, "Keep going", "/audio/start_session1.mp3");
   const speech = useWorld.getState().trains[id]?.speech;
   const regroups = useWorld.getState().regroups;
   syncPartyTrains(
     roster.map((member) => ({ ...member, efficiency: 0.9 })),
-    identity,
+    SELF,
     known,
   );
   expect(useWorld.getState().trains[id]?.speech).toEqual(speech);
@@ -51,12 +52,65 @@ test("a friend's focus update preserves their active speech without regrouping",
 });
 
 test("presence never brings back a line that the speech player already cleared", () => {
-  const known = syncPartyTrains(roster, identity, new Set());
-  const id = partyTrainId("friend");
+  const known = syncPartyTrains(roster, SELF, new Set());
+  const id = partyTrainId("conn-friend");
   useWorld.getState().say(id, "Keep going");
   const speech = useWorld.getState().trains[id]?.speech;
   if (!speech) throw new Error("Expected active speech");
   useWorld.getState().clearSpeech(id, speech.id);
-  syncPartyTrains(roster, identity, known);
+  syncPartyTrains(roster, SELF, known);
   expect(useWorld.getState().trains[id]?.speech).toBeUndefined();
+});
+
+test("somebody turning up puts everyone's focus score back on the floor", () => {
+  const store = useEfficiency.getState();
+  store.reset();
+  store.report("quiz", 1, { weight: 1 });
+  expect(useEfficiency.getState().score).toBeGreaterThan(90);
+
+  const alone = [roster[0] as ChatPresenceMember];
+  const known = syncPartyTrains(alone, SELF, new Set());
+  expect(useEfficiency.getState().score).toBeGreaterThan(90);
+
+  syncPartyTrains(roster, SELF, known);
+  expect(useEfficiency.getState().score).toBe(0);
+});
+
+test("the line regroups when anyone turns up, including coming back", () => {
+  const alone = [roster[0] as ChatPresenceMember];
+  const together = roster;
+
+  // You, by yourself: nobody has arrived but you, and you are already here.
+  let known = syncPartyTrains(alone, SELF, new Set());
+  expect(useWorld.getState().regroups).toBe(0);
+
+  // A friend turns up.
+  known = syncPartyTrains(together, SELF, known);
+  expect(useWorld.getState().regroups).toBe(1);
+
+  // They say something and their focus moves. Neither is an arrival.
+  known = syncPartyTrains(
+    together.map((member) => ({ ...member, efficiency: 0.9 })),
+    SELF,
+    known,
+  );
+  known = syncPartyTrains(
+    together.map((member) => ({ ...member, displayName: "Renamed" })),
+    SELF,
+    known,
+  );
+  expect(useWorld.getState().regroups).toBe(1);
+
+  // They close the tab, then come back. Coming back is joining.
+  known = syncPartyTrains(alone, SELF, known);
+  expect(useWorld.getState().regroups).toBe(1);
+  known = syncPartyTrains(together, SELF, known);
+  expect(useWorld.getState().regroups).toBe(2);
+
+  // The socket drops — the roster empties because there is nothing to report,
+  // not because the room did — and reconnects. That is an arrival too.
+  known = syncPartyTrains([], SELF, known);
+  expect(useWorld.getState().regroups).toBe(2);
+  syncPartyTrains(together, SELF, known);
+  expect(useWorld.getState().regroups).toBe(3);
 });

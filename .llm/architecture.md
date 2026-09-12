@@ -26,7 +26,7 @@ through `src/features/<feature>/index.ts`.
 | Path | Responsibility |
 |---|---|
 | `src/app.tsx`, `src/routes/` | Dashboard, session, Settings, invite landing page, and redirects from old chat URLs |
-| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. Webcam preview and diagnostics are dev-only |
+| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. Webcam preview and diagnostics are dev-only. Its model runs on the main thread, so the tracker sleeps between readings rather than running every animation frame — `GAZE_SAMPLE_MS` trades tracking responsiveness against a dropped frame per reading |
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
 | `src/features/session/` | Drives local efficiency, sends focus to chat, and maps the chat roster to companion trains |
@@ -105,10 +105,23 @@ Each companion train has its own speed and moves along its track relative to
 the local train; its wheels and smoke use that speed. Whole multi-axle bogies
 stay fixed, while individual wheel meshes spin.
 
-Relative gaps close gradually when speeds converge. New roster participants
-call `regroup()`, resetting speed and lining companions up again. A companion
-outside the camera frame is represented by `DriftMarker`; `framing.ts`
-computes the visible width from the current camera and viewport.
+Relative gaps close gradually when speeds converge.
+
+A rider is one open socket, not one `userId`: a userId
+lives in `localStorage` and every tab of a browser shares it, so keying riders
+by it turns two windows into one entry — no arrival, no train, an empty-looking
+room. The server names each socket on `ready` and the client picks itself out
+of the roster by that name, never by stored identity, which a second tab can
+overwrite. Anyone turning up on the roster restarts the
+sitting — a stranger, someone back after closing the tab, a reconnecting
+socket, all one event from inside the room. `useEfficiency.zero()` puts the
+focus score on the floor for everyone present, to be earned back, and speed
+follows the score down on its own. `regroup()` lines the companion trains up
+level to match; the scene reads the `regroups` count in its frame loop rather
+than subscribing, so no regroup can land on a subscription that was not
+mounted yet. A companion outside the camera frame is represented by
+`DriftMarker`; `framing.ts` computes the visible width from the current camera
+and viewport.
 
 The closer camera views the trains from the negative-z side; lanes extend in
 positive z. Camera, spacing, drift, bounce, and audio tuning values live in

@@ -43,6 +43,7 @@ export const WHEEL_RADIUS = 0.3;
 
 // Motion, metres per second squared
 export const ACCEL = 1.5;
+
 export const BRAKE_DECEL = 2;
 
 // Stopping: a station appears this far ahead when a stop is requested.
@@ -119,6 +120,12 @@ export const DRIFT_MARKER_BOB_SPEED = 2.4; // radians per second
 export const DRIFT_MARKER_EDGE_MARGIN = 0.9;
 export const DRIFT_AHEAD_COLOR = "#15803d"; // pulling away up front
 export const DRIFT_BEHIND_COLOR = "#b45309"; // dropping off the back
+
+// Pixel ratio. The scene renders at MAX_DPR and drops to MIN_DPR when the
+// frame rate says the machine cannot keep up — a soft picture beats a stuttery
+// one, and a machine that can afford the pixels never gives them up.
+export const MAX_DPR = 1.5;
+export const MIN_DPR = 1;
 
 // Camera: moved along the same viewing direction for a closer train view.
 export const CAMERA_POSITION: [number, number, number] = [-1.4, 4.4, -10];

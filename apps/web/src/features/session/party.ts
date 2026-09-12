@@ -6,7 +6,11 @@
 // exactly what the roster is.
 import type { ChatPresenceMember, TrainState } from "@grugchug/shared";
 
-/** Your own train is `local` and rides lane 0; everyone else is prefixed. */
+/**
+ * Your own train is `local` and rides lane 0; everyone else is prefixed and
+ * keyed by their connection, so a friend who reconnects gets a fresh train
+ * that pulls up level rather than inheriting the old one's place.
+ */
 export const PARTY_TRAIN_PREFIX = "party:";
 
 /**
@@ -18,7 +22,8 @@ export const MAX_PARTY_TRAINS = 4;
 
 // Every rider needs a face. Sprites are assigned from the userId rather than
 // handed out in arrival order, so you look the same on your friend's screen as
-// you do on your own.
+// you do on your own — and the same across your own two tabs, which are two
+// riders but one person.
 export const PARTY_SPRITES = [
   "/characters/poku.png",
   "/characters/bonbon.png",
@@ -32,9 +37,14 @@ export function spriteForUserId(userId: string): string {
 }
 
 /**
- * Who in this roster was not in the last one, you excepted. Arrivals are what
- * call the world to a standstill, so this has to be about people rather than
- * about the roster changing: a rename or a new focus score is not an arrival.
+ * Who in this roster was not in the one before it, you excepted.
+ *
+ * Arrivals are what call the world to a standstill, so this is about people
+ * rather than about the roster changing: a rename or a new focus score is not
+ * an arrival. Anyone turning up is, though — someone who was here an hour ago,
+ * someone who closed the tab and came back, someone whose socket dropped and
+ * reconnected. The line regroups for all of them, because from inside the room
+ * they are the same event.
  */
 export function arrivals(
   members: readonly ChatPresenceMember[],
@@ -42,8 +52,8 @@ export function arrivals(
   selfId: string | null,
 ): string[] {
   return members
-    .filter((member) => member.userId !== selfId && !known.has(member.userId))
-    .map((member) => member.userId);
+    .filter((member) => member.connectionId !== selfId && !known.has(member.connectionId))
+    .map((member) => member.connectionId);
 }
 
 export function partyTrainId(userId: string): string {
@@ -67,10 +77,10 @@ export function partyTrains(
   selfId: string | null,
 ): TrainState[] {
   return members
-    .filter((member) => member.userId !== selfId)
+    .filter((member) => member.connectionId !== selfId)
     .slice(0, MAX_PARTY_TRAINS)
     .map((member, index) => ({
-      id: partyTrainId(member.userId),
+      id: partyTrainId(member.connectionId),
       owner: { name: member.displayName, spriteUrl: spriteForUserId(member.userId) },
       phase: "running" as const,
       efficiency: Math.min(1, Math.max(0, member.efficiency)),

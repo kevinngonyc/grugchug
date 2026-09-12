@@ -10,10 +10,13 @@
 import type { ChatPresenceMember, ClientChatEvent, ServerChatEvent } from "@grugchug/shared";
 import { clientChatEventSchema } from "@grugchug/shared";
 import type { ServerWebSocket, WebSocketHandler } from "bun";
+import { newId } from "./ids";
 import { CHAT_RATE_LIMIT, RateLimiter } from "./rate-limit";
 import { insertMessage, setDisplayName } from "./store";
 
 export interface ChatSocketData {
+  /** This socket's own id, and the identity a rider is drawn under. */
+  connectionId: string;
   roomId: string;
   userId: string;
   displayName: string;
@@ -54,24 +57,33 @@ export function newSocketData(input: {
   userId: string;
   displayName: string;
 }): ChatSocketData {
-  return { ...input, efficiency: 0, limiter: new RateLimiter(CHAT_RATE_LIMIT) };
+  return {
+    ...input,
+    connectionId: newId(),
+    efficiency: 0,
+    limiter: new RateLimiter(CHAT_RATE_LIMIT),
+  };
 }
 
 /**
- * The roster a room's members should see. One entry per person, not per
- * socket: two tabs are one rider, and the newest connection's reading wins.
- * Pure, so the ordering and de-duplication are testable without a server.
+ * The roster a room's members should see: one entry per open socket, in the
+ * order they connected.
+ *
+ * Per socket rather than per person. Folding two tabs of one browser into a
+ * single rider sounds tidier and is worse in every direction: the two share a
+ * stored userId, so they collapse into one entry, and each tab then sees a
+ * room containing only itself — no arrival, no train, nothing to regroup for.
+ * Two windows open is two people studying as far as the track is concerned.
+ *
+ * Pure, so the ordering is testable without a server.
  */
 export function toPresence(connections: readonly ChatSocketData[]): ChatPresenceMember[] {
-  const byUser = new Map<string, ChatPresenceMember>();
-  for (const data of connections) {
-    byUser.set(data.userId, {
-      userId: data.userId,
-      displayName: data.displayName,
-      efficiency: data.efficiency,
-    });
-  }
-  return [...byUser.values()];
+  return connections.map((data) => ({
+    connectionId: data.connectionId,
+    userId: data.userId,
+    displayName: data.displayName,
+    efficiency: data.efficiency,
+  }));
 }
 
 // roomId -> open sockets. Connect order is preserved, which is also the order
@@ -156,7 +168,7 @@ export const chatWebSocket: WebSocketHandler<ChatSocketData> = {
   open(ws) {
     ws.subscribe(roomTopic(ws.data.roomId));
     join(ws);
-    ws.send(encode({ type: "ready", roomId: ws.data.roomId }));
+    ws.send(encode({ type: "ready", roomId: ws.data.roomId, connectionId: ws.data.connectionId }));
     broadcastPresence(ws.data.roomId);
   },
 

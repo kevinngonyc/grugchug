@@ -79,8 +79,13 @@ reconnects mid-change should not have to reconcile anything. It goes out socket
 by socket rather than through the topic, because `ws.publish` skips the sender
 and the person who just arrived is exactly who needs it.
 
-Two tabs are one rider: the roster is keyed by `userId`, and the newest
-connection's score wins.
+A rider is one open socket, not one person. Two tabs of a browser share a
+stored `userId`, so keying the roster by it folds them into a single entry and
+each tab sees a room containing only itself — no arrival, no train, nothing to
+regroup for, which is exactly what local testing looks like. The server names
+each socket on `ready`; the client finds itself in the roster by that name
+rather than by stored identity, which any other tab can overwrite underneath
+it.
 
 ### Focus, and the trains
 
@@ -106,19 +111,30 @@ speed. Once they agree it is just where they happened to end up, so it eases
 shut: a friend who vanished during a bad stretch is back inside the frame
 within a minute of matching your pace, arriving at a walk rather than a jump.
 
-Someone new joining is a fresh start for the line: every train's speed drops to
-nothing and every train is placed level again, then the whole line winds back
-up together. Without the re-levelling the newcomer would arrive to find
-everyone else strung out over a kilometre and mostly off screen, which says
-nothing about the session they are actually joining. It costs no visible jump —
-a train far enough out for the reset to matter is off screen while it happens,
-and one close enough to see moves a few metres.
+Anyone joining is a fresh start for the sitting: **the focus score drops to
+zero for everyone in the room**, to be earned back. Nobody is a hundred metres
+up the line on credit from before the newcomer arrived. Every client sees the
+same arrival and does the same thing, so the whole party drops together, and
+the trains slow to a crawl on their own because speed is only ever the score.
 
-A join is a fact about people, so it is a new `userId` on the roster: a rename
-or a new score is not one, and neither is a reconnect, which would otherwise
-read as the whole room arriving at once. The roster is only ever empty when the
-socket is down — you are always in your own — so an empty one is ignored rather
-than treated as everybody leaving.
+Zeroing has to hold the sources down rather than forget them. Forgetting every
+signal leaves the score at *neutral*, not nothing, and attention opens at
+whatever it sees next — so a reading a second later would put the score
+straight back where it was. Held at zero, attention folds *up* from the floor
+at its own half-life: about a minute of eyes on the screen to earn half of it
+back. That is what makes it something to climb out of rather than a flicker.
+
+Their trains are also lined up level again, so they do not arrive to find
+everyone strung out over a kilometre and mostly off screen. That costs no
+visible jump — a train far enough out for it to matter is off screen while it
+happens, and one close enough to see moves a few metres.
+
+A join is a fact about people, so it is a `userId` that was not in the previous
+roster: a rename or a new score is not one. Everything else is — a stranger, a
+friend who closed the tab an hour ago, a socket that dropped and came back.
+From inside the room those are the same event, and the line regroups for all of
+them. Each roster is compared with the one before it, the empty one a dropped
+socket leaves included, which is what makes a reconnect count.
 
 A train that has left the picture is replaced by an arrowhead at the edge of
 it, pointing the way it went — forward and green for someone pulling away,

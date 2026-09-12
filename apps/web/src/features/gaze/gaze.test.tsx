@@ -44,6 +44,22 @@ afterEach(() => {
   Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
 });
 
+test("sleeps the tracker between readings, with the tab still visible", async () => {
+  render(<Gaze />);
+  // The first reading is still being waited for.
+  expect(pause).not.toHaveBeenCalled();
+
+  await act(async () => {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+  });
+
+  // Woken, sampled, and put back to sleep without the tab ever being hidden.
+  // That gap is the whole point: the face-mesh loop is what makes the scene
+  // stutter, and it only has to run long enough for one reading.
+  expect(resume).toHaveBeenCalled();
+  expect(pause).toHaveBeenCalled();
+});
+
 test("pauses webgazer when the tab is hidden", () => {
   render(<Gaze />);
   expect(begin).toHaveBeenCalled();

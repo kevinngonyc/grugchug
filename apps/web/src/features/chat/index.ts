@@ -26,4 +26,4 @@ export {
 } from "./identity";
 export { JoinRoomView } from "./join-view";
 export type { ChatLog } from "./message-log";
-export { useRoster } from "./roster";
+export { useRoster, useRosterSelfId } from "./roster";

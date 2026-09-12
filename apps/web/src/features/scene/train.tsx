@@ -1,6 +1,6 @@
 import { Clone, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { type RefObject, Suspense, useCallback, useEffect, useRef } from "react";
+import { type RefObject, Suspense, useEffect, useRef } from "react";
 import type { Group, Object3D } from "three";
 import { useConductorUi } from "@/features/conductor";
 import { targetSpeed, useWorld } from "@/features/world";
@@ -17,7 +17,6 @@ import { DriftMarker } from "./drift-marker";
 import { MODELS } from "./models";
 import { createMotion, driftClosing, driftGap, type LaneMotion, stepMotion } from "./motion";
 import { Smoke } from "./smoke";
-import { useRegroup } from "./use-regroup";
 
 type TrainProps = { trainId: string; motion: RefObject<LaneMotion> };
 
@@ -52,16 +51,10 @@ export function Train({ trainId, motion }: TrainProps) {
   // frame, so coming and going costs no re-renders.
   const gap = useRef(0);
 
-  // A new arrival is a fresh start: everyone stops and everyone is level
-  // again, rather than the newcomer meeting a line that is already strung out
-  // over a kilometre. Re-placing is what the sync below already does, so this
-  // only has to ask for it. Nothing pops — a train far enough out for the
-  // reset to matter is off screen while it happens.
-  useRegroup(
-    useCallback(() => {
-      synced.current = false;
-    }, []),
-  );
+  // Checked in the frame loop, like the lane's. A train that mounts later
+  // starts from the count it finds, so a newcomer does not stop dead the
+  // moment it appears — it has nothing to regroup from yet.
+  const seenRegroups = useRef(useWorld.getState().regroups);
 
   useEffect(() => {
     const found: Object3D[] = [];
@@ -74,9 +67,20 @@ export function Train({ trainId, motion }: TrainProps) {
   useFrame((_, dt) => {
     const lane = motion.current;
     const step = Math.min(dt, 0.1);
+    const world = useWorld.getState();
+
+    // A new arrival lines the whole party up again, rather than the newcomer
+    // meeting a line strung out over a kilometre. Re-placing is what the sync
+    // below already does, so this only has to ask for it. Nothing pops — a
+    // train far enough out for the reset to matter is off screen while it
+    // happens.
+    if (world.regroups !== seenRegroups.current) {
+      seenRegroups.current = world.regroups;
+      synced.current = false;
+    }
 
     if (!isLocal) {
-      const train = useWorld.getState().trains[trainId];
+      const train = world.trains[trainId];
       if (train) {
         // Level with the lane and matching its speed: true when this train
         // first appears, and again whenever a regroup asks for it.

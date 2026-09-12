@@ -2,53 +2,59 @@
 // features/world: chat reports who is connected, this decides what that means
 // for the world, and the scene draws it.
 import { useEffect, useRef } from "react";
-import {
-  type ChatIdentity,
-  type ChatPresenceMember,
-  readIdentity,
-  useRoster,
-} from "@/features/chat";
+import { type ChatPresenceMember, useRoster, useRosterSelfId } from "@/features/chat";
+import { useEfficiency } from "@/features/efficiency";
 import { useWorld } from "@/features/world";
 import { arrivals, isPartyTrainId, partyTrains } from "./party";
 
 export function usePartyTrains(): void {
   const roster = useRoster();
-  // Who was here last time. Survives an empty roster on purpose — see below.
+  // Our own socket, as the server named it. Deliberately not read from stored
+  // identity: that key is shared by every tab of this browser, so a second tab
+  // joining would overwrite it and leave this one mistaking a friend for
+  // itself — drawing a train for itself and none for them.
+  const selfId = useRosterSelfId();
+  // Who was in the previous roster, so an arrival can be told from a rename.
   const known = useRef<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
-    known.current = syncPartyTrains(roster, readIdentity(), known.current);
-  }, [roster]);
+    known.current = syncPartyTrains(roster, selfId, known.current);
+  }, [roster, selfId]);
 }
 
 // Apply presence without overwriting fields owned by profile or speech.
 export function syncPartyTrains(
   roster: readonly ChatPresenceMember[],
-  identity: ChatIdentity | null,
+  selfId: string | null,
   known: ReadonlySet<string>,
 ): ReadonlySet<string> {
-  const selfId = identity?.userId ?? null;
   const world = useWorld.getState();
 
-  // Your own train is created by the session, not by the roster, but the
-  // name comes from chat; its chosen passenger stays owned by the profile.
+  // Your own train is created by the session, not by the roster, but the name
+  // comes from chat — from the server's copy of it, which is the same string
+  // everyone else in the room sees. Its chosen passenger stays the profile's.
+  const self = roster.find((member) => member.connectionId === selfId);
   const local = world.localTrainId ? world.trains[world.localTrainId] : undefined;
-  if (identity && local) {
-    world.setOwner(local.id, {
-      ...local.owner,
-      name: identity.displayName,
-    });
+  if (self && local) {
+    world.setOwner(local.id, { ...local.owner, name: self.displayName });
   }
 
-  // An empty roster means the socket is down, not that the room emptied —
-  // you are always in your own roster. Holding on to who was here is what
-  // keeps a reconnect from reading as everyone arriving at once.
-  if (roster.length > 0) {
-    if (arrivals(roster, known, selfId).length > 0) world.regroup();
-    known = new Set(
-      roster.filter((member) => member.userId !== selfId).map((member) => member.userId),
-    );
+  // Every roster is compared with the one before it, the empty one a dropped
+  // socket leaves included. So a reconnect reads as everyone arriving again —
+  // which is right: coming back is joining.
+  //
+  // Somebody turning up restarts the sitting for everyone present. The focus
+  // score goes to the floor and has to be earned back, so nobody is a hundred
+  // metres up the line on credit from before the newcomer arrived; every
+  // client in the room sees the same arrival and does the same thing, so the
+  // whole party drops together. `regroup()` lines the trains up to match.
+  if (arrivals(roster, known, selfId).length > 0) {
+    useEfficiency.getState().zero();
+    world.regroup();
   }
+  known = new Set(
+    roster.filter((member) => member.connectionId !== selfId).map((member) => member.connectionId),
+  );
 
   const wanted = partyTrains(roster, selfId);
   const wantedIds = new Set(wanted.map((train) => train.id));

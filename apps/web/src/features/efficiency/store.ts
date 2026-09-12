@@ -45,6 +45,8 @@ export type EfficiencyState = {
   tick: (at?: number) => void;
   /** Forget everything — a new sitting starts from neutral. */
   reset: () => void;
+  /** Put the score on the floor, to be earned back. */
+  zero: (at?: number) => void;
 };
 
 function recompute(
@@ -99,6 +101,34 @@ export const useEfficiency = create<EfficiencyState>()((set, get) => ({
   tick: (at = Date.now()) => set((s) => ({ score: recompute(s.signals, at) })),
 
   reset: () => set({ signals: {}, score: scoreOrNeutral([], Date.now()) }),
+
+  // Everyone starts the next stretch level, with the score to earn back.
+  //
+  // Not `reset()`: forgetting every signal leaves the score at neutral rather
+  // than nothing, and attention opens at whatever it sees next — so the first
+  // reading a second later would put it straight back where it was. Holding
+  // the sources at zero instead means attention folds *up* from the floor at
+  // its own half-life, which is what makes this something to climb out of.
+  zero: (at = Date.now()) =>
+    set((s) => {
+      const signals: Record<string, EfficiencySignal> = {};
+      for (const [source, signal] of Object.entries(s.signals)) {
+        signals[source] = { ...signal, value: 0, updatedAt: at };
+      }
+      // Nothing has reported yet, so there is nothing to hold down: seed
+      // attention itself, or the score would read neutral instead of zero.
+      if (Object.keys(signals).length === 0) {
+        signals[ATTENTION_SOURCE] = {
+          source: ATTENTION_SOURCE,
+          label: "Eyes on screen",
+          value: 0,
+          weight: ATTENTION_WEIGHT,
+          halfLifeMs: ATTENTION_STALE_HALF_LIFE_MS,
+          updatedAt: at,
+        };
+      }
+      return { signals, score: recompute(signals, at) };
+    }),
 }));
 
 function positiveWeight(weight: number | undefined): number {

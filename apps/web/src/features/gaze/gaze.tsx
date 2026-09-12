@@ -43,13 +43,49 @@ const LEFT_EYE_INNER = 362;
 const MIN_EXPECTED_LANDMARKS = 468;
 
 // How many recent samples to average, to smooth out per-frame jitter.
-const SMOOTHING_SAMPLES = 5;
+const SMOOTHING_SAMPLES = 3;
+
+// WebGazer's prediction loop runs a face-mesh model on every animation frame.
+// That is the one cost in this app that competes with the render loop frame
+// for frame, and nothing here needs sixty readings a second: a head turn is a
+// slow event, and `awayThresholdMs` is two seconds.
+//
+// So the tracker sleeps between readings. Each cycle wakes it, waits for one
+// fresh reading, takes it, and pauses again — which keeps the tracker awake
+// for about as long as a single inference takes on whatever machine this is,
+// rather than a fixed guess.
+//
+// GAZE_SAMPLE_MS is the dial. Every reading costs one dropped frame, so this
+// is a straight trade of tracking responsiveness against smoothness, and a
+// second is generous for what the reading is for: `awayThresholdMs` is two
+// seconds and attention's half-life is a minute. Turning it down makes the
+// facing decision quicker and the scene choppier.
+//
+// The trade exists because this tracker runs its model on the main thread and
+// there is no way to ask it not to — see the note in .llm/architecture.md on
+// replacing it. Nothing here can make an inference free; it can only make it
+// rare.
+//
+// It has to be one reading per wake rather than a burst of them. A burst is
+// cheaper on paper and much worse to look at: it gathers the dropped frames
+// into one long hitch instead of spreading them, and a quarter-second freeze
+// once a second reads as the whole app stuttering.
+//
+// Safe because `pause()` and `resume()` only stop and start that loop: the
+// camera stream stays open, so there is no permission prompt, no camera light
+// blinking, and no reinitialisation between readings.
+const GAZE_SAMPLE_MS = 1_000;
+/** How often to check whether the tracker has produced a new reading yet. */
+const WAKE_POLL_MS = 16;
+/** Stop waiting for a fresh reading. Reached when there is no face to find. */
+const WAKE_MAX_MS = 250;
 
 // How quickly the "reference distance" (typical interocular width) adapts
-// to a real change in seating position, per 200ms tick. ~0.02 gives a time
-// constant of roughly 10s — slow enough that a few seconds turned away, or
-// normal head-turn jitter, barely moves it, but a real move to sit closer
-// or farther away is picked up within well under a minute.
+// to a real change in seating position, per reading. Readings come at
+// GAZE_SAMPLE_MS, so ~0.02 gives a time constant of roughly 10s — slow enough
+// that a few seconds turned away, or normal head-turn jitter, barely moves it,
+// but a real move to sit closer or farther away is picked up within well under
+// a minute.
 const DISTANCE_REFERENCE_EMA_ALPHA = 0.02;
 
 // Clamp how far distance-scaling is allowed to stretch/shrink the base
@@ -57,6 +93,17 @@ const DISTANCE_REFERENCE_EMA_ALPHA = 0.02;
 // right into the lens) can't make the thresholds absurd.
 const MIN_DISTANCE_FACTOR = 0.6;
 const MAX_DISTANCE_FACTOR = 1.8;
+
+/**
+ * A cheap stand-in for "which frame is this". Landmarks jitter every frame
+ * even when you hold still, so a changed nose tip means the tracker has run
+ * again — which is how the wake window ends as early as it possibly can.
+ */
+function positionSignature(positions: number[][] | null): number | null {
+  const nose = positions?.[NOSE_TIP];
+  if (!nose) return null;
+  return coord(nose, 0) * 4096 + coord(nose, 1);
+}
 
 interface HeadPose {
   yaw: number;
@@ -161,17 +208,20 @@ export function Gaze({
 
     webgazer.begin();
 
-    let interval: ReturnType<typeof setInterval> | null = null;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // Which reading was last taken, so a wake can end as soon as a new one
+    // lands instead of waiting out a fixed guess.
+    let lastSignature: number | null = null;
 
     const stopSampling = () => {
-      if (interval !== null) {
-        clearInterval(interval);
-        interval = null;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
       }
     };
 
-    const sample = () => {
-      const positions = webgazer.getTracker()?.getPositions() ?? null;
+    const sample = (positions: number[][] | null) => {
       const pose = positions ? computeHeadPose(positions) : null;
 
       let facing = false;
@@ -262,9 +312,49 @@ export function Gaze({
       }
     };
 
+    // Wake, wait for one fresh reading, take it, sleep. See GAZE_SAMPLE_MS.
+    const runCycle = () => {
+      if (disposed || document.hidden) return;
+      const wokeAt = Date.now();
+
+      void webgazer
+        .resume()
+        .then(() => {
+          const waitForReading = () => {
+            if (disposed || document.hidden) return;
+
+            const positions = webgazer.getTracker()?.getPositions() ?? null;
+            const signature = positionSignature(positions);
+            const fresh = signature !== null && signature !== lastSignature;
+            const waited = Date.now() - wokeAt;
+
+            if (!fresh && waited < WAKE_MAX_MS) {
+              timer = setTimeout(waitForReading, WAKE_POLL_MS);
+              return;
+            }
+
+            lastSignature = signature;
+            sample(positions);
+            webgazer.pause();
+            // A wake that found nothing spent the whole cap looking, so it
+            // sleeps a full cycle rather than going straight back round.
+            timer = setTimeout(
+              runCycle,
+              fresh ? Math.max(0, GAZE_SAMPLE_MS - waited) : GAZE_SAMPLE_MS,
+            );
+          };
+          waitForReading();
+        })
+        .catch(() => {
+          // A failed wake is not fatal, and it must not leave the tracker
+          // asleep for good: try again on the next cycle.
+          if (!disposed) timer = setTimeout(runCycle, GAZE_SAMPLE_MS);
+        });
+    };
+
     const startSampling = () => {
       stopSampling();
-      interval = setInterval(sample, 200);
+      runCycle();
     };
 
     // Background tabs still ran face mesh before this — pause the tracker and
@@ -276,9 +366,8 @@ export function Gaze({
         onFacingRef.current?.(false);
         setLookingAway(true);
       } else {
-        void webgazer.resume().then(() => {
-          if (!document.hidden) startSampling();
-        });
+        // runCycle wakes the tracker itself.
+        startSampling();
       }
     };
 
@@ -292,6 +381,7 @@ export function Gaze({
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      disposed = true;
       document.removeEventListener("visibilitychange", onVisibility);
       stopSampling();
       webgazer.end();
