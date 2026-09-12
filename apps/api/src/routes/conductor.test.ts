@@ -90,6 +90,7 @@ describe("createPlan", () => {
     let questionMaterials: unknown;
     let saved: RoutePlan | undefined;
 
+    let savedMaterials: unknown;
     const res = await createPlanWithDeps(
       post("/api/conductor/plans", { userId: "u1", materials }),
       {
@@ -101,8 +102,9 @@ describe("createPlan", () => {
           questionMaterials = input.materials;
           return toolResult<GenerateQuestionsOutput>({ questions: fourQuestions });
         },
-        save: async (plan) => {
+        save: async (plan, stored) => {
           saved = plan;
+          savedMaterials = stored;
         },
       },
     );
@@ -110,6 +112,8 @@ describe("createPlan", () => {
     expect(res.status).toBe(200);
     expect(planRouteMaterials).toEqual(materials);
     expect(questionMaterials).toEqual(materials);
+    // Kept with the plan so the TA can answer from them later.
+    expect(savedMaterials).toEqual(materials);
     // The hash covers the whole set, so dropping a file is different material.
     expect(saved?.materialHash).not.toBe("");
   });
@@ -419,6 +423,7 @@ describe("askConductor", () => {
       post("/api/conductor/ask", { planId: "p1", stationId: "s1", question: "why?" }),
       {
         get: async () => plan,
+        getMaterials: async () => null,
         runAsk: async (input) => {
           receivedScope = input.scope;
           return toolResult({ answer: "because" });
@@ -429,11 +434,59 @@ describe("askConductor", () => {
     expect(receivedScope).toBe("station scope");
   });
 
+  test("hands the TA the stored material and the conversation so far", async () => {
+    const materials = [{ kind: "text" as const, text: "lecture one" }];
+    const history = [{ question: "Name two pigments", answer: "Chlorophyll a and b." }];
+    let received: unknown;
+    await askConductorWithDeps(
+      post("/api/conductor/ask", {
+        planId: "p1",
+        stationId: "s1",
+        question: "and the second one?",
+        history,
+      }),
+      {
+        get: async () => plan,
+        getMaterials: async (planId) => (planId === "p1" ? materials : null),
+        runAsk: async (input) => {
+          received = input;
+          return toolResult({ answer: "b" });
+        },
+      },
+    );
+    expect(received).toEqual({
+      scope: "station scope",
+      question: "and the second one?",
+      history,
+      materials,
+    });
+  });
+
+  test("a plan with no stored material still gets an answer from its scope", async () => {
+    let received: { materials?: unknown } | undefined;
+    const res = await askConductorWithDeps(
+      post("/api/conductor/ask", { planId: "p1", question: "why?" }),
+      {
+        get: async () => plan,
+        getMaterials: async () => {
+          throw new Error("no such table");
+        },
+        runAsk: async (input) => {
+          received = input;
+          return toolResult({ answer: "because" });
+        },
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(received?.materials).toBeUndefined();
+  });
+
   test("404s when the plan does not exist", async () => {
     const res = await askConductorWithDeps(
       post("/api/conductor/ask", { planId: "missing", question: "why?" }),
       {
         get: async () => null,
+        getMaterials: async () => null,
         runAsk: async () => toolResult({ answer: "n/a" }),
       },
     );
@@ -530,22 +583,39 @@ describe("evaluateProgress", () => {
     return evaluateProgressWithDeps(Object.assign(req, { params: { stationId: "s1" } }), {
       get: async () => plan,
       runEvaluate:
-        runEvaluate ??
-        (async () => toolResult<EvaluateProgressOutput>({ passed: true, feedback: "Nice work." })),
+        runEvaluate ?? (async () => toolResult<EvaluateProgressOutput>({ feedback: "Nice work." })),
     });
   }
 
-  test("passes the station scope and results through to the tool", async () => {
+  function resultsScoring(...scores: number[]) {
+    return scores.map((score, i) => ({
+      questionId: ["q1", "q2", "q3", "q4"][i] ?? "q1",
+      prompt: `Q${i + 1}`,
+      answerGiven: "a",
+      score,
+      feedback: "f",
+    }));
+  }
+
+  test("hands the tool the scope, results, and the verdict it must explain", async () => {
     let receivedInput: unknown;
     const results = [
       { questionId: "q1", prompt: "2+2?", answerGiven: "4", score: 1, feedback: "Correct." },
     ];
     const res = await evaluate({ planId: "p1", results }, async (input) => {
       receivedInput = input;
-      return toolResult<EvaluateProgressOutput>({ passed: true, feedback: "Great." });
+      return toolResult<EvaluateProgressOutput>({ feedback: "Great." });
     });
     expect(await res.json()).toEqual({ passed: true, feedback: "Great." });
-    expect(receivedInput).toEqual({ scope: "station scope", results });
+    expect(receivedInput).toEqual({ scope: "station scope", results, passed: true, meanScore: 1 });
+  });
+
+  test("passes at exactly 70% overall and fails just under it, whatever the model says", async () => {
+    const atMark = await evaluate({ planId: "p1", results: resultsScoring(1, 1, 0.8, 0) });
+    expect((await atMark.json()).passed).toBe(true);
+
+    const under = await evaluate({ planId: "p1", results: resultsScoring(1, 1, 0.76, 0) });
+    expect((await under.json()).passed).toBe(false);
   });
 
   test("rejects a result whose questionId is not in this station", async () => {
@@ -567,8 +637,7 @@ describe("evaluateProgress", () => {
       Object.assign(req, { params: { stationId: "s1" } }),
       {
         get: async () => null,
-        runEvaluate: async () =>
-          toolResult<EvaluateProgressOutput>({ passed: false, feedback: "n/a" }),
+        runEvaluate: async () => toolResult<EvaluateProgressOutput>({ feedback: "n/a" }),
       },
     );
     expect(res.status).toBe(404);

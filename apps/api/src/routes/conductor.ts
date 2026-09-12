@@ -23,6 +23,7 @@ import {
   evaluateProgressRequestSchema,
   evaluateProgressResponseSchema,
   type Material,
+  PASS_THRESHOLD,
   publicRoutePlanSchema,
   type RoutePlan,
   type Station,
@@ -30,7 +31,12 @@ import {
   setTimerResponseSchema,
 } from "@grugchug/shared";
 import { fallbackReason } from "../conductor/harness";
-import { getRoutePlanById, saveRoutePlan } from "../conductor/store";
+import {
+  getPlanMaterials,
+  getRoutePlanById,
+  savePlanMaterials,
+  saveRoutePlan,
+} from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
 import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
 import { generateQuestionsTool } from "../conductor/tools/generate-questions";
@@ -66,13 +72,17 @@ function unavailable(reason: string): Response {
 export interface CreatePlanDeps {
   runPlanRoute: typeof planRouteTool.run;
   runGenerateQuestions: typeof generateQuestionsTool.run;
-  save: typeof saveRoutePlan;
+  save(plan: RoutePlan, materials: readonly Material[]): Promise<void>;
 }
 
 const defaultCreatePlanDeps: CreatePlanDeps = {
   runPlanRoute: planRouteTool.run,
   runGenerateQuestions: generateQuestionsTool.run,
-  save: saveRoutePlan,
+  // The plan, and the files it came from for the TA to answer from later.
+  save: async (plan, materials) => {
+    await saveRoutePlan(plan);
+    await savePlanMaterials(plan.id, materials);
+  },
 };
 
 type BuiltStation = { ok: true; station: Station } | { ok: false; reason: string };
@@ -133,7 +143,7 @@ export async function createPlanWithDeps(req: Request, deps: CreatePlanDeps): Pr
   };
 
   try {
-    await deps.save(plan);
+    await deps.save(plan, materials);
   } catch (error) {
     return Response.json(
       { error: `failed to save route plan: ${describeError(error)}` },
@@ -242,11 +252,13 @@ export function answerStation(req: WithParams<"stationId">): Promise<Response> {
 }
 
 export interface AskConductorDeps extends PlanLookupDeps {
+  getMaterials: typeof getPlanMaterials;
   runAsk: typeof askConductorTool.run;
 }
 
 const defaultAskConductorDeps: AskConductorDeps = {
   get: getRoutePlanById,
+  getMaterials: getPlanMaterials,
   runAsk: askConductorTool.run,
 };
 
@@ -256,15 +268,23 @@ export async function askConductorWithDeps(
 ): Promise<Response> {
   const body = await readBody(req, askRequestSchema);
   if (!body.ok) return body.response;
-  const { planId, stationId, question } = body.data;
+  const { planId, stationId, question, history } = body.data;
 
   const found = await loadPlan(planId, deps.get);
   if (!found.ok) return found.response;
 
   const station = stationId ? found.plan.stations.find((s) => s.id === stationId) : undefined;
   const scope = station?.scope ?? found.plan.stations.map((s) => s.scope).join("\n");
+  // A plan built before materials were stored has none; the TA answers from
+  // the scope, as it always did.
+  const materials = await deps.getMaterials(planId).catch(() => null);
 
-  const result = await deps.runAsk({ scope, question });
+  const result = await deps.runAsk({
+    scope,
+    question,
+    history: history ?? [],
+    materials: materials ?? undefined,
+  });
   return Response.json(askResponseSchema.parse(result.output));
 }
 
@@ -331,8 +351,16 @@ export async function evaluateProgressWithDeps(
     );
   }
 
-  const result = await deps.runEvaluate({ scope: station.scope, results });
-  return Response.json(evaluateProgressResponseSchema.parse(result.output));
+  // The verdict is the score, not the model's opinion: the same mean the web
+  // shows as "overall", against the same threshold. The epsilon keeps a mean
+  // that is 0.7 up to float rounding on the passing side.
+  const meanScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+  const passed = meanScore + 1e-9 >= PASS_THRESHOLD;
+
+  const result = await deps.runEvaluate({ scope: station.scope, results, passed, meanScore });
+  return Response.json(
+    evaluateProgressResponseSchema.parse({ passed, feedback: result.output.feedback }),
+  );
 }
 
 // POST /api/conductor/stations/:stationId/evaluate
