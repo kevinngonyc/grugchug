@@ -3,5 +3,6 @@
 
 export * from "./schemas/gaze";
 export * from "./schemas/session";
+export * from "./schemas/train";
 export * from "./schemas/typing";
 export * from "./schemas/user";
