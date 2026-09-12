@@ -7,10 +7,10 @@
 // session that opens a panel over the scene. Identity is a display name plus a
 // server-minted userId kept in localStorage.
 //
-// Two threads cross this boundary, both driven from features/session and both
-// one-way: `reportFocus` pushes the study score in for the room to see, and
-// `useRoster` reads out who to draw a train for. Chat itself reads nothing
-// from the rest of the app.
+// Threads cross this boundary, all driven from features/session and all
+// one-way: `reportFocus` pushes the study score in, `reportJourney` pushes
+// avatar and route progress in, and `useRoster` reads out who to draw a train
+// for. Chat itself reads nothing from the rest of the app.
 
 export type { ChatMessage, ChatPresenceMember, ChatRoom } from "@grugchug/shared";
 export { joinRoom } from "./api";
@@ -25,5 +25,7 @@ export {
   writeIdentity,
 } from "./identity";
 export { JoinRoomView } from "./join-view";
+export type { JourneyStatus } from "./journey-link";
+export { reportJourney } from "./journey-link";
 export type { ChatLog } from "./message-log";
 export { useRoster } from "./roster";

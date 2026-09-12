@@ -10,6 +10,7 @@ import { serverChatEventSchema } from "@grugchug/shared";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { chatSocketUrl, listMessages } from "./api";
 import { setFocusSink } from "./focus-link";
+import { setJourneySink } from "./journey-link";
 import { type ChatLog, chatLogReducer, emptyChatLog } from "./message-log";
 import { useRosterStore } from "./roster";
 
@@ -124,12 +125,14 @@ export function useChatRoom(roomId: string | null, userId: string | null): ChatR
         // connection's sink is replaced rather than left to write into a
         // closed socket.
         setFocusSink((efficiency) => sendEvent({ type: "focus", efficiency }));
+        setJourneySink((status) => sendEvent({ type: "journey", ...status }));
         void loadHistory();
       };
       socket.onmessage = (event: MessageEvent<string>) => handleFrame(event.data);
       socket.onclose = () => {
         socketRef.current = null;
         setFocusSink(null);
+        setJourneySink(null);
         // Presence is what the socket carries; without one we know nothing
         // about who else is here, so the room empties rather than going stale.
         useRosterStore.getState().clear();
@@ -149,6 +152,7 @@ export function useChatRoom(roomId: string | null, userId: string | null): ChatR
       if (retryTimer) clearTimeout(retryTimer);
       socketRef.current = null;
       setFocusSink(null);
+      setJourneySink(null);
       useRosterStore.getState().clear();
       if (socket) dispose(socket);
     };

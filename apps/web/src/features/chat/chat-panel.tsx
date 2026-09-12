@@ -5,8 +5,10 @@
 // This is also where the room's socket lives, and the socket is what carries
 // presence, so it stays mounted for the whole session. Closing the panel hides
 // it; it does not disconnect anyone.
-import type { ChatPresenceMember } from "@grugchug/shared";
+
+import type { ChatPresenceMember, Journey } from "@grugchug/shared";
 import { useCallback } from "react";
+import { avatarUrl } from "@/features/profile";
 import { ChatComposer } from "./chat-composer";
 import { InvitePanel } from "./invite-panel";
 import { MessageList } from "./message-list";
@@ -14,6 +16,15 @@ import { NameField } from "./name-field";
 import { useRoster } from "./roster";
 import { useChatRoom } from "./use-chat-room";
 import { useMyRoom } from "./use-my-room";
+
+// Riders who never picked an avatar (or whose profile has not loaded yet on
+// this connection) get the same placeholder study-session gives one: a plain
+// silhouette, not another rider's face. Not `@/features/profile`'s default,
+// and not `@/features/session` — session already imports chat, and importing
+// it back here would be a cycle.
+function spriteFor(_userId: string): string {
+  return "/characters/default.svg";
+}
 
 const statusLabel = {
   connecting: "Connecting…",
@@ -31,6 +42,48 @@ export function ridersLabel(members: readonly ChatPresenceMember[], selfId: stri
   if (others.length === 1) return `${others[0]} is riding with you.`;
   if (others.length === 2) return `${others[0]} and ${others[1]} are riding with you.`;
   return `${others.slice(0, -1).join(", ")} and ${others.at(-1)} are riding with you.`;
+}
+
+/** One rider's place on their route, or nothing worth saying. Pure for tests. */
+export function journeyLabel(journey: Journey | undefined): string {
+  if (!journey) return "";
+  const at = journey.station ? `station ${journey.station.index}` : "the platform";
+  switch (journey.state) {
+    case "idle":
+      return "";
+    case "studying":
+      return journey.station
+        ? `Station ${journey.station.index} of ${journey.station.total}`
+        : "Studying";
+    case "at-station":
+      return `At ${at}`;
+    case "answering":
+      return `Answering at ${at}`;
+    case "on-break":
+      return "On a break";
+    case "finished":
+      return "Finished";
+  }
+}
+
+/** The roster, one row per rider: their picked character, name, and journey. */
+export function RosterList({ members }: { members: readonly ChatPresenceMember[] }) {
+  if (members.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-1 pt-1">
+      {members.map((member) => (
+        <li key={member.userId} className="flex items-center gap-2 text-xs">
+          <img
+            src={member.avatar ? avatarUrl(member.avatar) : spriteFor(member.userId)}
+            alt=""
+            className="size-6 rounded-full bg-background/60"
+          />
+          <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
+          <span className="text-muted-foreground">{journeyLabel(member.journey)}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function ChatPanel() {
@@ -61,6 +114,7 @@ export function ChatPanel() {
         <p className="truncate text-[0.6875rem] text-muted-foreground">
           {room ? ridersLabel(roster, identity?.userId ?? null) : statusLabel[status]}
         </p>
+        <RosterList members={roster} />
       </header>
 
       {problem && <p className="px-3 pt-2 text-xs text-destructive">{problem}</p>}
