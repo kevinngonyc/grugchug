@@ -8,5 +8,7 @@
 // opens it, the camera rig reads whether to zoom in.
 
 export { ConductorOverlay } from "./conductor-overlay";
+export { fetchHistory } from "./history";
 export { useConductorUi } from "./store";
+export { applyStudyPhase, journeyForSession, phaseForMode, useStudyDrive } from "./study-drive";
 export { useStudySession } from "./study-session";

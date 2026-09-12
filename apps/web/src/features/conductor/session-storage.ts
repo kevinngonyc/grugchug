@@ -13,6 +13,7 @@ export interface PersistedSession {
   timerEndsAt: number | null;
   timerMessage: string | null;
   lastStretchMinutes: number | null;
+  historyId: string | null;
 }
 
 function storage(): Storage | null {
@@ -35,7 +36,8 @@ export function readSession(): PersistedSession | null {
       typeof (parsed as PersistedSession).stationIndex === "number" &&
       typeof (parsed as PersistedSession).mode === "string"
     ) {
-      return parsed as PersistedSession;
+      const session = parsed as PersistedSession;
+      return { ...session, historyId: session.historyId ?? null };
     }
   } catch {
     // Corrupt entry: behave like there is nothing to resume.
