@@ -4,6 +4,7 @@
 // commands. The scene only reads.
 
 export type {
+  TrainOwner,
   TrainPhase,
   TrainState,
   WorldSnapshot,

@@ -35,6 +35,15 @@ export function stepMotion(m: LaneMotion, cruise: number, target: number, dt: nu
   m.speed = v;
 }
 
+// Scrolling strips place items by world x and draw them at worldX - scroll.
+// Once an item falls below `cutoff` on screen it jumps forward by `span`, so a
+// fixed pool covers the visible width forever. Returns the new world x.
+export function wrapWorldX(worldX: number, scroll: number, cutoff: number, span: number): number {
+  let x = worldX;
+  while (x - scroll < cutoff) x += span;
+  return x;
+}
+
 // Lets shared elements (the far hills) read the local train's motion without
 // prop drilling through the Canvas.
 const registry = new Map<string, LaneMotion>();

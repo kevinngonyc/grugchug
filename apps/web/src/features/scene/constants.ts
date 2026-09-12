@@ -39,6 +39,7 @@ export const SCENERY_SCALE = 1.5;
 export const SCENERY_PER_LANE = 16;
 export const SCENERY_MIN_DEPTH = 0.9; // behind the track, so it never covers the train
 export const SCENERY_MAX_DEPTH = 2.3;
+export const STATION_CLEARANCE = 5.5; // scenery slots this close to a station's centre hide until they recycle
 
 // Smoke
 export const SMOKE_PUFFS = 14;

@@ -3,13 +3,13 @@ import { useRef } from "react";
 import type { Group } from "three";
 import { useWorld } from "@/features/world";
 import { HILL_DEPTH, HILL_PARALLAX, RECYCLE_SPAN, VISIBLE_HALF_WIDTH } from "./constants";
-import { getMotion } from "./motion";
+import { getMotion, wrapWorldX } from "./motion";
 
 const HILLS = [
-  { id: "hill-a", x: -30, r: 14, color: "#7fb069" },
-  { id: "hill-b", x: -8, r: 18, color: "#6a9c5b" },
-  { id: "hill-c", x: 16, r: 12, color: "#7fb069" },
-  { id: "hill-d", x: 36, r: 16, color: "#6a9c5b" },
+  { id: "hill-a", x: -39, r: 14, color: "#7fb069" },
+  { id: "hill-b", x: -13, r: 18, color: "#6a9c5b" },
+  { id: "hill-c", x: 13, r: 12, color: "#7fb069" },
+  { id: "hill-d", x: 39, r: 16, color: "#6a9c5b" },
 ];
 const HILL_SPAN = RECYCLE_SPAN * 2;
 
@@ -24,13 +24,10 @@ export function Hills() {
     const motion = localTrainId === null ? undefined : getMotion(localTrainId);
     const scroll = (motion?.scroll ?? 0) * HILL_PARALLAX;
     HILLS.forEach((_, i) => {
-      let x = (worldX.current[i] ?? 0) - scroll;
-      if (x < -VISIBLE_HALF_WIDTH * 2) {
-        worldX.current[i] = (worldX.current[i] ?? 0) + HILL_SPAN;
-        x += HILL_SPAN;
-      }
+      const x = wrapWorldX(worldX.current[i] ?? 0, scroll, -VISIBLE_HALF_WIDTH * 2, HILL_SPAN);
+      worldX.current[i] = x;
       const g = groups.current[i];
-      if (g) g.position.x = x;
+      if (g) g.position.x = x - scroll;
     });
   });
 

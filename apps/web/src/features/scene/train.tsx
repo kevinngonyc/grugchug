@@ -1,6 +1,6 @@
 import { Clone, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { type RefObject, useEffect, useRef } from "react";
+import { type RefObject, Suspense, useEffect, useRef } from "react";
 import type { Group, Object3D } from "three";
 import { useWorld } from "@/features/world";
 import { Character } from "./character";
@@ -43,7 +43,11 @@ export function Train({ trainId, motion }: TrainProps) {
         <Clone object={carriage.scene} />
       </group>
       <Smoke motion={motion} />
-      {spriteUrl ? <Character url={spriteUrl} /> : null}
+      {spriteUrl ? (
+        <Suspense fallback={null}>
+          <Character url={spriteUrl} />
+        </Suspense>
+      ) : null}
     </group>
   );
 }

@@ -29,7 +29,7 @@ export function SessionDevPanel() {
     w.addTrain({
       id,
       owner: {
-        name: FRIEND_NAMES[liveTrainCount % FRIEND_NAMES.length] ?? "Friend",
+        name: FRIEND_NAMES[(liveTrainCount - 1) % FRIEND_NAMES.length] ?? "Friend",
         spriteUrl: "/characters/bonbon.png",
       },
       phase: "running",

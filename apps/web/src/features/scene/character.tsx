@@ -8,6 +8,8 @@ type CharacterProps = { url: string };
 // width/height attributes works; swap the URL, not the code.
 export function Character({ url }: CharacterProps) {
   const texture = useTexture(url);
+  // useTexture caches one Texture per URL, so this mutates a shared object on
+  // every render. Safe only because the value is a constant; keep it that way.
   texture.colorSpace = SRGBColorSpace;
   return (
     <Billboard position={CHARACTER_OFFSET}>

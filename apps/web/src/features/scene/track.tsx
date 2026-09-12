@@ -10,7 +10,7 @@ import {
   VISIBLE_HALF_WIDTH,
 } from "./constants";
 import { MODELS } from "./models";
-import type { LaneMotion } from "./motion";
+import { type LaneMotion, wrapWorldX } from "./motion";
 
 type TrackProps = { motion: RefObject<LaneMotion> };
 
@@ -33,13 +33,15 @@ export function Track({ motion }: TrackProps) {
   useFrame(() => {
     const scroll = motion.current.scroll;
     for (let i = 0; i < TRACK_SEGMENTS; i++) {
-      let x = (worldX.current[i] ?? 0) - scroll;
-      if (x + TRACK_SEGMENT_LENGTH < -VISIBLE_HALF_WIDTH) {
-        worldX.current[i] = (worldX.current[i] ?? 0) + RUN_LENGTH;
-        x += RUN_LENGTH;
-      }
+      const w = wrapWorldX(
+        worldX.current[i] ?? 0,
+        scroll,
+        -VISIBLE_HALF_WIDTH - TRACK_SEGMENT_LENGTH,
+        RUN_LENGTH,
+      );
+      worldX.current[i] = w;
       const g = groups.current[i];
-      if (g) g.position.x = x;
+      if (g) g.position.x = w - scroll;
     }
   });
 

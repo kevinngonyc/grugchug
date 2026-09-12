@@ -110,3 +110,15 @@ train" button that seeds another lane with random phase changes.
 - Agent tool-call routing. Agents will end up calling world commands through
   the API; that plumbing is its own spec.
 - Time of day, weather, and other ambience.
+
+## Deviations (recorded after implementation)
+
+- `station.tsx` builds the platform from primitives, not a glb. The Kenney
+  Train Kit has no station model.
+- `scenery.tsx` and `track.tsx` use drei `Clone` rather than instancing.
+  Around 76 draw calls per lane; instancing is the first optimisation if
+  frame rate suffers alongside webcam inference.
+- "Scenery stops spawning on `finished`" is not implemented separately: a
+  finished train's scroll freezes, so nothing recycles anyway.
+- `setLocalTrainId(id)` was added to the world commands; the hills parallax
+  off the local train and the dev panel needs to know which train is ours.

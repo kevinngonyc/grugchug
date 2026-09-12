@@ -59,10 +59,12 @@ export function Lane({ trainId }: LaneProps) {
     }
   });
 
+  const stationXs = stations.map((s) => s.worldX);
+
   return (
     <group position-z={-lane * LANE_SPACING}>
       <Track motion={motion} />
-      <Scenery motion={motion} />
+      <Scenery motion={motion} stationXs={stationXs} />
       {stations.map((s) => (
         <Station key={s.id} motion={motion} worldX={s.worldX} terminus={s.terminus} />
       ))}

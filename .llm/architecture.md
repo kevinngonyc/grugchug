@@ -19,7 +19,7 @@ production the two deploy separately.
 | `src/routes/` | One file per page: dashboard, session, settings |
 | `src/features/gaze/` | Webcam eye tracking: calibration, gaze estimates, attention metrics. Emits `GazeSample` |
 | `src/features/typing/` | Keystroke timing and corrections, never key contents. Emits `TypingSample` |
-| `src/features/world/` | zustand store of trains, phases, efficiency; command API every driver uses. No three.js |
+| `src/features/world/` | zustand store of trains, phases, efficiency; command API every driver uses. No three.js; commands include setLocalTrainId |
 | `src/features/scene/` | react-three-fiber rendering of the world store: one scrolling lane per train, stations, scenery, sprites. Never writes the store |
 | `src/features/session/` | Starts and stops a session, gathers samples from gaze and typing, sends them to the API |
 | `src/components/ui/` | shadcn components |
