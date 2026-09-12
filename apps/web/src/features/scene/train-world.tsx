@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useWorld } from "@/features/world";
 import { CAMERA_FOV, CAMERA_LOOK_AT, CAMERA_POSITION, SKY_COLOR } from "./constants";
+import { Hills } from "./hills";
 import { Lane } from "./lane";
 import { ALL_MODEL_URLS } from "./models";
 
@@ -22,6 +23,7 @@ export function TrainWorld() {
       <ambientLight intensity={0.8} />
       <directionalLight position={[10, 15, 10]} intensity={1.4} />
       <Suspense fallback={null}>
+        <Hills />
         {trainIds.map((id) => (
           <Lane key={id} trainId={id} />
         ))}

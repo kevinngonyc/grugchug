@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { targetSpeed, useWorld } from "@/features/world";
 import { LANE_SPACING } from "./constants";
 import { createMotion, registerMotion, stepMotion, unregisterMotion } from "./motion";
+import { Scenery } from "./scenery";
 import { Track } from "./track";
 import { Train } from "./train";
 
@@ -28,6 +29,7 @@ export function Lane({ trainId }: LaneProps) {
   return (
     <group position-z={-lane * LANE_SPACING}>
       <Track motion={motion} />
+      <Scenery motion={motion} />
       <Train trainId={trainId} motion={motion} />
     </group>
   );
