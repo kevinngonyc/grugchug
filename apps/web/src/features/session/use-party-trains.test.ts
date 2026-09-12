@@ -38,7 +38,7 @@ test("presence updates the local chat name without replacing the chosen avatar",
 test("a friend's focus update preserves their active speech without regrouping", () => {
   const known = syncPartyTrains(roster, SELF, new Set());
   const id = partyTrainId("conn-friend");
-  useWorld.getState().say(id, "Keep going", "/audio/start_session1.mp3");
+  useWorld.getState().say(id, "Keep going", "/audio/start_sessioncensored.mp3");
   const speech = useWorld.getState().trains[id]?.speech;
   const regroups = useWorld.getState().regroups;
   syncPartyTrains(
