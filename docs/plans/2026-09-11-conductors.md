@@ -42,6 +42,8 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU
 - `apps/api/src/routes/conductor.ts` and `apps/api/src/routes/chat.ts` are the LLM conductor agent and chat backends. They are not touched here. The conductor agent will eventually call `say`; that plumbing is not in this plan.
 - The chat feature keeps a browser identity in localStorage under `grugchug.chat.identity` (`{ userId, displayName }`), server-minted on first create or join. The server honours a caller-supplied id: `apps/api/src/routes/chat.ts` does `const userId = callerId(req) ?? newUserId();` where `callerId` reads the `CHAT_USER_HEADER` (`x-grugchug-user`) header, validated by `userIdSchema = z.string().min(1).max(64)`. The three client call sites pass `userId: identity?.userId ?? null`: `apps/web/src/features/chat/chat-rooms-view.tsx` (`onCreate`, `onJoin`) and `apps/web/src/features/chat/join-room-view.tsx` (`submit`).
 - `apps/web/test/setup.ts` registers happy-dom and runs Testing Library `cleanup` after each test, so components from one test never leak into the next.
+- After merging `origin/main` at `384407d` (commit `6705014` on this branch): `apps/web/src/routes/session.tsx` now creates the local train `running` with `efficiency: efficiencyFraction()`, calls `useEfficiencyDrive()` from `@/features/session`, shows a Focus score box with `<Gaze debug={dev} onFacing={reportAttention} />`, and renders `<ChatOverlay />`. `apps/web/src/routes/session-dev-panel.tsx` replaced the efficiency slider with a manual-override block that reads `useEfficiency`; its `addFriend`, `timers` ref, `friendCounter` ref, cleanup effect, wrapper classes, and "add friend train" button are unchanged. `.llm/AGENTS.md` gained the line "`features/session` is the only writer into `world`", written for the efficiency score; this plan's speech drivers also write to `world` through commands and Task 9 amends that line. `.llm/architecture.md` gained efficiency and chat sections; its `train` and `conductor` schema rows were accidentally left below the Chat section instead of inside the `packages/shared` table.
+- Three voice clips are committed at `apps/web/public/audio/start_session1.mp3`, `great_session1.mp3`, `pass_quiz1.mp3` (commit `f2140ff`). The user asked that the start-of-session clip be used for now.
 - `apps/api/src/db.ts` exports `getDb(): Promise<Db>`.
 - `packages/shared/src/index.ts` does `export * from "./schemas/<file>"` for each schema file (chat, conductor, gaze, session, train, typing, user), so new exports need no index change. `packages/shared/src/schemas/user.ts` is still `{ id, name, createdAt }` with no avatar.
 - drei 10.7.8 `Html` props include `center`, `distanceFactor`, `zIndexRange`, `pointerEvents`, and three.js `group` props like `position`.
@@ -62,13 +64,18 @@ apps/web/src/features/world/
   store.test.ts      + speech and owner cases
   index.ts           + Speech type export
 
-apps/web/src/features/speech/        new feature: plays speech, clears it when done
+apps/web/src/features/speech/        new feature: plays speech, clears it when done, announces departures
   index.ts
   duration.ts        speechDuration(text) fallback timing
   duration.test.ts
   player.ts          createSpeechPlayer(deps): watches the world, plays once, clears
   player.test.ts
   use-speech-player.ts   hook wiring the real Audio and window timers
+  lines.ts           VOICE_LINES registry: startSession, greatSession, passQuiz (Task 10)
+  lines.test.ts
+  departure.ts       createDepartureAnnouncer(): says startSession when the local train departs (Task 10)
+  departure.test.ts
+  use-departure-announcer.ts
 
 apps/web/src/features/scene/
   constants.ts       + BUBBLE_OFFSET, BUBBLE_DISTANCE_FACTOR, BOB_AMPLITUDE, BOB_FREQUENCY, BOB_EASE
@@ -103,8 +110,8 @@ apps/web/src/features/profile/       new feature: who this browser is
 
 apps/web/src/routes/
   settings.tsx       renders AvatarPicker bound to useProfile
-  session.tsx        profile-driven local train, setOwner sync, useSpeechPlayer; keeps Gaze
-  session-dev-panel.tsx  + chatter button, z-20
+  session.tsx        profile-driven local train, setOwner sync, useSpeechPlayer, useDepartureAnnouncer; keeps efficiency drive, Focus box, Gaze, ChatOverlay
+  session-dev-panel.tsx  + chatter button (local conductor says startSession with its clip), z-20
 
 .llm/architecture.md    rows for speech, profile, users route, schema changes
 .llm/AGENTS.md          one convention line about speech ownership
@@ -897,6 +904,8 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 
 ### Task 4: Scene: bob, speech bubble, dev chatter
 
+Runs after Task 10, which provides `VOICE_LINES`.
+
 **Files:**
 - Modify: `apps/web/src/features/scene/constants.ts`
 - Create: `apps/web/src/features/scene/speech-bubble.tsx`
@@ -906,7 +915,7 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 - Modify: `apps/web/src/routes/session.tsx`
 
 **Interfaces:**
-- Consumes: `useWorld` (`trains[id].speech`, `say`), `useSpeechPlayer` from `@/features/speech` (Task 3).
+- Consumes: `useWorld` (`trains[id].speech`, `say`), `useSpeechPlayer` and `VOICE_LINES` from `@/features/speech` (Tasks 3 and 10).
 - Produces: `Character({ url, position?, trainId? })` where a `trainId` makes the sprite the speaker for that train (bob + bubble); `SpeechBubble({ text })`; constants `BUBBLE_OFFSET`, `BUBBLE_DISTANCE_FACTOR`, `BOB_AMPLITUDE`, `BOB_FREQUENCY`, `BOB_EASE`.
 
 The conductor sprite on the locomotive is the speaker. The passenger sprite on the carriage stays static. To flip that later (make the picked avatar the talker), move `trainId={trainId}` from the conductor `<Character>` to the passenger one in `train.tsx`; nothing else changes.
@@ -1056,7 +1065,13 @@ Leave the passenger `<Character url={spriteUrl} />` as it is.
 
 - [ ] **Step 5: Add the chatter button and mount the player**
 
-In `apps/web/src/routes/session-dev-panel.tsx`:
+In `apps/web/src/routes/session-dev-panel.tsx` (this file now also has a manual-override score block from main; leave it alone):
+
+Add the import
+
+```ts
+import { VOICE_LINES } from "@/features/speech";
+```
 
 Add after `const PHASES...`:
 
@@ -1091,14 +1106,23 @@ Change the cleanup effect to clear both:
 Add after the `addFriend` function:
 
 ```ts
-  // Every train says a line in turn, 1.5 s apart, with no clip, so bubbles,
-  // bobbing, and the fallback timer can be checked by hand.
+  // Every train says a line in turn, 1.5 s apart. The local conductor says the
+  // start-of-session voice line with its clip (a click is a user gesture, so
+  // the browser allows the audio); friends say canned text lines, which
+  // exercise the fallback timer.
   const chatter = () => {
     const ids = Object.keys(useWorld.getState().trains);
     const offset = chatterCounter.current++;
     ids.forEach((id, i) => {
-      const line = CHATTER[(i + offset) % CHATTER.length] ?? "All aboard!";
-      timeouts.current.push(setTimeout(() => useWorld.getState().say(id, line), i * 1500));
+      const speak = () => {
+        if (id === localTrainId) {
+          const line = VOICE_LINES.startSession;
+          useWorld.getState().say(id, line.text, line.audioUrl);
+          return;
+        }
+        useWorld.getState().say(id, CHATTER[(i + offset) % CHATTER.length] ?? "All aboard!");
+      };
+      timeouts.current.push(setTimeout(speak, i * 1500));
     });
   };
 ```
@@ -1120,17 +1144,25 @@ Add a button after the "add friend train" button:
 In `apps/web/src/routes/session.tsx`, add the import
 
 ```ts
-import { useSpeechPlayer } from "@/features/speech";
+import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
 ```
 
-and call `useSpeechPlayer();` as the first line of the `Session` body, before `const localTrainId = ...`.
+and add these two calls directly after the existing `useEfficiencyDrive();` call:
+
+```ts
+  // Conductors: play each utterance's clip and announce departures.
+  useSpeechPlayer();
+  useDepartureAnnouncer();
+```
+
+Nothing else in session.tsx changes in this task; Task 8 rewrites the file.
 
 - [ ] **Step 6: Typecheck, lint, build, manual check**
 
 Run: `bun run typecheck && bun run lint && bun run build`
 Expected: pass.
 
-Manual: `bun run dev`, open `http://localhost:5173/session?dev`. Click "add friend train" twice, then "chatter". Expected: the local train's conductor (the boxy one on the locomotive) gets a bubble and starts bobbing while the passenger on the carriage stays still; 1.5 s later the first friend's conductor, then the second. Each bubble reads its line, sits over the conductor with a tail pointing down, and bobs with it. Bubbles disappear after roughly 2 to 3 s and the bob eases out. Bubbles on farther lanes are a little smaller. The dev panel stays above any bubble. Click "chatter" again and confirm the same conductor re-animates with a new line. If bubbles look too large or small, adjust `BUBBLE_DISTANCE_FACTOR` and re-check. Stop the dev server.
+Manual: `bun run dev`, open `http://localhost:5173/session?dev`. Because the local train is created running, its conductor should announce the start-of-session line as soon as the train appears; if you loaded the page directly the browser may block the clip, in which case the bubble still shows for the fallback duration. Click "add friend train" twice, then "chatter". Expected: the local train's conductor (the boxy one on the locomotive) gets a bubble reading the start-of-session caption, the clip plays, and it bobs for the clip's length while the passenger on the carriage stays still; 1.5 s later the first friend's conductor says a canned line, then the second. Each bubble sits over its conductor with a tail pointing down and bobs with it. Text-only bubbles disappear after roughly 2 to 3 s and the bob eases out. Bubbles on farther lanes are a little smaller. The dev panel stays above any bubble. The bubble is DOM, so the station roof or any other geometry never hides it; check it is legible against the sky from the reversed close camera and does not sit off the top of the viewport when the train is stopped at a platform (press "stopped", wait for the halt, then "chatter"). If bubbles look too large, too small, or too high, adjust `BUBBLE_DISTANCE_FACTOR` or `BUBBLE_OFFSET` and re-check. Stop the dev server.
 
 - [ ] **Step 7: Commit**
 
@@ -1143,7 +1175,8 @@ git commit -m "Show a speech bubble and bob the conductor while its train has sp
 
 drei Html bubble inside a bobbing group on the conductor sprite, keyed
 by utterance so repeated lines re-animate. Dev panel gains a chatter
-button; the session page mounts the speech player.
+button that plays the start-of-session clip; the session page mounts
+the speech player and the departure announcer.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
@@ -2046,37 +2079,49 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 - Modify: `apps/web/src/routes/session.tsx`
 
 **Interfaces:**
-- Consumes: `useProfile`, `profileOwner` from `@/features/profile` (Task 6); `setOwner` on `useWorld` (Task 2); `useSpeechPlayer` (mounted in Task 4).
+- Consumes: `useProfile`, `profileOwner` from `@/features/profile` (Task 6); `setOwner` on `useWorld` (Task 2); `useSpeechPlayer`, `useDepartureAnnouncer` from `@/features/speech` (mounted in Task 4); `efficiencyFraction`, `reportAttention`, `useEfficiency` from `@/features/efficiency`; `useEfficiencyDrive` from `@/features/session`; `ChatOverlay` from `@/features/chat`; `Gaze` from `@/features/gaze` (all already used by the file).
 
 No unit test: the route renders the WebGL canvas. `profileOwner` and the store are covered in Task 6; this task is wiring plus a manual check.
 
 - [ ] **Step 1: Rewrite session.tsx**
 
+The file after Task 4 already mounts the speech hooks. Replace the whole file with the version below. Everything from main (efficiency drive, `running` phase with `efficiencyFraction()`, Focus box, Gaze, ChatOverlay) stays exactly as it is; only the profile gating, `owner`, and the `setOwner` sync are new.
+
 ```tsx
 import { useEffect } from "react";
 import { useSearchParams } from "react-router";
+import { ChatOverlay } from "@/features/chat";
+import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/efficiency";
 import { Gaze } from "@/features/gaze";
 import { profileOwner, useProfile } from "@/features/profile";
 import { TrainWorld } from "@/features/scene";
-import { useSpeechPlayer } from "@/features/speech";
+import { useEfficiencyDrive } from "@/features/session";
+import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
 import { useWorld } from "@/features/world";
 import { SessionDevPanel } from "./session-dev-panel";
 
 const LOCAL_TRAIN_ID = "local";
 
 export function Session() {
-  useSpeechPlayer();
   const localTrainId = useWorld((s) => s.localTrainId);
+  const score = useEfficiency((s) => s.score);
   const user = useProfile((s) => s.user);
   const status = useProfile((s) => s.status);
   const load = useProfile((s) => s.load);
+
+  // Gaze reports attention, the quiz will report its own signal, and this
+  // hands whatever they add up to on to the train.
+  useEfficiencyDrive();
+  // Conductors: play each utterance's clip and announce departures.
+  useSpeechPlayer();
+  useDepartureAnnouncer();
 
   useEffect(() => {
     void load();
   }, [load]);
 
   // The local train waits for the profile so it boards with the right
-  // conductor. An unreachable API rides with the default rather than blocking.
+  // passenger. An unreachable API rides with the default rather than blocking.
   useEffect(() => {
     if (localTrainId !== null) return;
     if (status !== "ready" && status !== "error") return;
@@ -2084,8 +2129,10 @@ export function Session() {
     w.addTrain({
       id: LOCAL_TRAIN_ID,
       owner: profileOwner(user),
-      phase: "stopped",
-      efficiency: 0.7,
+      // Running from the moment you open a session: the score is what sets the
+      // speed from here, and it starts wherever the score starts.
+      phase: "running",
+      efficiency: efficiencyFraction(),
       lane: 0,
     });
     w.setLocalTrainId(LOCAL_TRAIN_ID);
@@ -2105,22 +2152,24 @@ export function Session() {
     <div className="absolute inset-0">
       <TrainWorld />
       {dev ? <SessionDevPanel /> : null}
-      <div className="absolute bottom-4 left-4 rounded-lg bg-white/90">
-        <Gaze debug={dev} />
+      <div className="absolute bottom-4 left-4 rounded-lg bg-white/90 font-mono">
+        <div className="px-4 pt-3 text-sm font-semibold">Focus {Math.round(score)}/100</div>
+        <Gaze debug={dev} onFacing={reportAttention} />
       </div>
+      <ChatOverlay />
     </div>
   );
 }
 ```
 
-The `Gaze` box is a teammate's and must stay exactly as it was. Apply the same `noVoid` fallback as Task 7 if Biome complains.
+If Biome reports `lint/complexity/noVoid`, replace `void load();` with a block body `{ load(); }`.
 
 - [ ] **Step 2: Typecheck, lint, test, build, manual check**
 
 Run: `bun run typecheck && bun run lint && bun run test && bun run build`
 Expected: pass.
 
-Manual, with MongoDB and both servers up: pick Bonbon in `/settings`, open `/session`. Expected: the tall blob rides the carriage; the boxy conductor is still on the locomotive. Go back to `/settings`, pick Conductor, return to `/session`: the carriage now carries a second boxy figure, no reload needed. Stop the API, hard-reload `/session`: a train still appears, carrying Poku. Restart the API.
+Manual, with MongoDB and both servers up: pick Bonbon in `/settings`, open `/session`. Expected: the tall blob rides the carriage; the boxy conductor is still on the locomotive and announces the start-of-session line as the train appears. Go back to `/settings`, pick Conductor, return to `/session`: the carriage now carries a second boxy figure, no reload needed, and no second announcement (the train already existed). Stop the API, hard-reload `/session`: a train still appears, carrying Poku. Restart the API.
 
 - [ ] **Step 3: Commit**
 
@@ -2145,19 +2194,21 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 - Modify: `.llm/AGENTS.md`
 - Modify: `docs/specs/2026-09-11-conductors-design.md`
 
+Both `.llm` files were reshaped by the efficiency and chat merges. Edit by finding the quoted anchors; do not rewrite sections you are not asked to touch.
+
 - [ ] **Step 1: Update architecture.md**
 
-In the `## apps/web` table, add these two rows directly after the `src/features/world/` row:
+In the `## apps/web` table, add these rows directly after the `src/features/world/` row:
 
 ```markdown
-| `src/features/speech/` | Driver that plays conductor speech: watches `world` for new utterances, plays the clip or a text-length fallback, then `clearSpeech`. The only thing that clears speech |
-| `src/features/profile/` | Who this browser is: a localStorage user id, the user record from `/api/users`, the avatar catalog, and the picker |
+| `src/features/speech/` | Conductor speech drivers: the player watches `world` for new utterances, plays the clip or a text-length fallback, then `clearSpeech`; the departure announcer says the start-of-session line when the local train departs. `lines.ts` is the voice-line registry |
+| `src/features/profile/` | Who this browser is: the user record from `/api/users` (name, avatar), the avatar catalog, and the picker |
 ```
 
 Change the `src/features/scene/` row to:
 
 ```markdown
-| `src/features/scene/` | react-three-fiber rendering of the world store: one scrolling lane per train, stations, scenery, a conductor and a passenger sprite per train, and a speech bubble plus bob on the conductor while its train has `speech`. Never writes the store |
+| `src/features/scene/` | react-three-fiber rendering of the world store: one lane per train, all scrolling with the local train's motion; stations on the local lane, scenery, a conductor and a passenger sprite per train, and a speech bubble plus bob on the conductor while its train has `speech`. Never writes the store |
 ```
 
 Add after the `src/lib/` row:
@@ -2166,50 +2217,72 @@ Add after the `src/lib/` row:
 | `src/lib/user-id.ts` | The browser's user id, minted once into localStorage. Shared by `profile` and `chat` |
 ```
 
-Change the data-flow paragraph (it currently ends with "or a multiplayer sync calling `applySnapshot`.") to:
+Add after `public/models/` row:
 
 ```markdown
-Data flows one way: `gaze` and `typing` produce samples, `session` collects
-and persists them and drives `world` commands, `scene` renders `world`.
-`world` is pure TypeScript, so anything can drive it without WebGL: the
-session timer, a tracking score, an agent tool call routed through the API,
-a multiplayer sync calling `applySnapshot`, or `speech` clearing a finished
-line. `profile` feeds the local train's owner into `world`.
+| `public/characters/`, `public/audio/` | Character PNGs and conductor voice clips |
 ```
 
-In the `## apps/api` table, add after the `src/db.ts` row (before the conductor rows):
+Change the data-flow paragraph's final sentence, which currently ends "or a multiplayer sync calling `applySnapshot`.", so the paragraph reads:
+
+```markdown
+Data flows one way: `gaze` and `typing` produce samples, those samples become
+signals in `efficiency`, `session` collects and persists them and drives
+`world` commands from the score, `scene` renders `world`.
+`world` is pure TypeScript, so anything can drive it without WebGL: the
+session timer, a tracking score, an agent tool call routed through the API,
+a multiplayer sync calling `applySnapshot`, or `speech` saying a line and
+clearing it when the clip ends. `profile` feeds the local train's owner into
+`world`.
+```
+
+In the `## apps/api` table, add after the `src/db.ts` row:
 
 ```markdown
 | `src/routes/users.ts` | `GET`/`PUT /api/users/:id`: read and upsert a browser-identified user's name and avatar |
 | `src/users-repo.ts` | `UserRepo` interface; Mongo implementation over the `users` collection and an in-memory one for tests |
 ```
 
-In the `## packages/shared` table, change the `user` and `train` rows to:
+In the `## packages/shared` table, change the `user` row to:
 
 ```markdown
 | `user` | Browser-identified user: `id`, `name`, `avatar` (`AvatarId`), `createdAt`; `userProfile` is the PUT body |
+```
+
+The `train` and `conductor` rows were left stranded below the `## Chat` section by an earlier merge. Delete those two lines from there and add them to the `## packages/shared` table after the `clientChatEvent` row, with `train` updated:
+
+```markdown
 | `train` | `TrainPhase`, `TrainState` (id, owner, phase, efficiency, lane, optional `speech`), `Speech`, `WorldSnapshot` |
+| `conductor` | `RoutePlan` of `Station`s with `Question`s, answer and ask bodies. `public*` variants strip answer keys for the browser |
 ```
 
 In `## Deferred`, replace the "Conductor sprite: ... is committed but unplaced ..." bullet with:
 
 ```markdown
-- Voice clips: `say(trainId, text, audioUrl)` plays whatever URL it is given. Producing clips (text to speech, storage) belongs to the conductor agent pipeline, which also does not yet call `say`.
+- Voice clips: `say(trainId, text, audioUrl)` plays whatever URL it is given. Three clips ship in `public/audio/`; only the start-of-session line is wired up, and its caption in `features/speech/lines.ts` is a placeholder until the transcript is pasted in. Generating clips belongs to the conductor agent pipeline, which does not yet call `say`.
 - Speech across clients: each client's speech player clears lines locally. A snapshot that re-delivers a friend's finished line puts its bubble back until the friend's clear propagates. Multiplayer spec.
 - One identity: `lib/user-id` is used by profile always and by chat only on a first create or join. A browser that chatted before this landed keeps its older chat id alongside the new profile id until real auth replaces both.
 ```
 
 - [ ] **Step 2: Update AGENTS.md**
 
+Find the convention bullet that ends with "`features/session` is the only writer into `world`." and change that sentence to:
+
+```markdown
+  `features/session` (the score) and `features/speech` (utterances) are the
+  only writers into `world`.
+```
+
 Append to the `## Conventions` list:
 
 ```markdown
 - `train.speech` is set by `say` and cleared only by `features/speech`. The
-  scene shows a bubble and bobs the sprite while it is set and knows nothing
-  about clips or timing.
+  scene shows a bubble and bobs the conductor sprite while it is set and knows
+  nothing about clips or timing.
 - Adding a character drawing: add its id to `avatarIdSchema` in shared, the
   PNG to `apps/web/public/characters/`, and its display name in
-  `features/profile/avatars.ts`.
+  `features/profile/avatars.ts`. Adding a voice line: drop the clip in
+  `apps/web/public/audio/` and register it in `features/speech/lines.ts`.
 ```
 
 - [ ] **Step 3: Record deviations in the spec**
@@ -2217,6 +2290,366 @@ Append to the `## Conventions` list:
 Append to `docs/specs/2026-09-11-conductors-design.md`:
 
 ```markdown
+## Deviations (recorded after implementation)
+
+- A clip that errors or whose `play()` rejects falls back to the text-length
+  timer instead of clearing immediately. The player table above said
+  "clear"; the behaviour section's fallback rule is what shipped, so a broken
+  URL never makes a line vanish before it can be read.
+- `stop()` clears the speech it interrupts. Without this, leaving the session
+  page mid-line and coming back would replay the stale line with a fresh
+  player.
+- `AvatarPicker` is presentational (`selected`, `onSelect`, `disabled`); the
+  Settings page owns the store. Keeps the picker testable without fetch.
+- API handlers take `(id, req)`; `index.ts` unpacks `req.params.id`. Route
+  tests then need no `BunRequest`.
+- `setAvatar` failure sets `status: "error"` but keeps the last loaded user,
+  so the session still rides with the last known avatar.
+- The conductor is not the picked avatar. While this spec was being written,
+  teammates put a fixed `conductor.png` on every locomotive and moved the
+  owner's sprite onto the carriage (commit `8c3a1e6`). The conductor is the
+  agent's face and is the sprite that talks and bobs; the picked avatar is
+  the passenger. Flipping that is one prop move in `train.tsx`.
+- The browser user id lives in `apps/web/src/lib/user-id.ts`, not in
+  `features/profile`, because chat needs the same id and features do not
+  import each other. Chat sends it as the caller id on a first create or
+  join; the server keeps a caller-supplied id.
+- Settings labels the picker "Your character", since the pick is the
+  passenger, not the conductor.
+- Voice lines shipped after all: `features/speech/lines.ts` registers three
+  clips, and a departure announcer says the start-of-session line when the
+  local train appears running or goes from stopped to running. The local
+  train is created running (efficiency drives its speed), so the first
+  announcement is the session start itself.
+- The local train no longer starts `stopped` with `efficiency: 0.7`; main
+  changed it to `running` with the efficiency score before this landed, and
+  the session keeps that.
+```
+
+- [ ] **Step 4: Final verification**
+
+Run from the repo root:
+
+```bash
+bun run typecheck && bun run test && bun run lint && bun run build
+```
+
+Expected: all four pass. Then `git status --short` shows only the three doc files modified.
+
+- [ ] **Step 5: Commit**
+
+```bash
+bun run fmt
+git add .llm/architecture.md .llm/AGENTS.md docs/specs/2026-09-11-conductors-design.md
+git commit -m "Document speech and profile features and record spec deviations
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
+```
+
+- [ ] **Step 6: Hand back**
+
+Use `superpowers:finishing-a-development-branch`. The target is `main`, which teammates integrate into by pull request. Push `worktree-conductors` and open a PR against `main`, or merge locally from the main working tree with explicit paths only; never `git add -A` there.
+
+---
+
+### Task 10: Voice lines and the departure announcer
+
+Runs after Task 3 (it adds files to `features/speech` and extends its `index.ts`) and before Task 4.
+
+**Files:**
+- Create: `apps/web/src/features/speech/lines.ts`
+- Create: `apps/web/src/features/speech/lines.test.ts`
+- Create: `apps/web/src/features/speech/departure.ts`
+- Create: `apps/web/src/features/speech/departure.test.ts`
+- Create: `apps/web/src/features/speech/use-departure-announcer.ts`
+- Modify: `apps/web/src/features/speech/index.ts`
+
+**Interfaces:**
+- Consumes: `useWorld` (`say`, `subscribe`, `getState`, `localTrainId`, `trains[id].phase`) from `@/features/world`; `TrainPhase` from `@grugchug/shared`. The clips at `/audio/start_session1.mp3`, `/audio/great_session1.mp3`, `/audio/pass_quiz1.mp3` exist in `apps/web/public/audio/`.
+- Produces: `VoiceLine = { text: string; audioUrl: string }`, `VOICE_LINES` with keys `startSession`, `greatSession`, `passQuiz`, `VoiceLineId`; `createDepartureAnnouncer(): { start(): void; stop(): void }`; `useDepartureAnnouncer(): void`. `index.ts` additionally exports `VOICE_LINES`, `type VoiceLineId`, `useDepartureAnnouncer`.
+
+- [ ] **Step 1: Write the failing lines test**
+
+`apps/web/src/features/speech/lines.test.ts`:
+
+```ts
+import { describe, expect, test } from "bun:test";
+import { VOICE_LINES } from "./lines";
+
+describe("VOICE_LINES", () => {
+  test("start of session plays the start_session clip", () => {
+    expect(VOICE_LINES.startSession.audioUrl).toBe("/audio/start_session1.mp3");
+    expect(VOICE_LINES.startSession.text.length).toBeGreaterThan(0);
+  });
+
+  test("every line has a caption and a clip under /audio/", () => {
+    for (const line of Object.values(VOICE_LINES)) {
+      expect(line.text.length).toBeGreaterThan(0);
+      expect(line.audioUrl.startsWith("/audio/")).toBe(true);
+      expect(line.audioUrl.endsWith(".mp3")).toBe(true);
+    }
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `cd apps/web && bun test src/features/speech/lines.test.ts`
+Expected: FAIL, cannot find module `./lines`.
+
+- [ ] **Step 3: Write lines.ts**
+
+```ts
+// Voice lines the conductor can say. The clips in public/audio are the source
+// of truth; the captions are PLACEHOLDERS until the real transcripts are
+// pasted in. Adding a line: drop the clip in public/audio and register it here.
+export type VoiceLine = { text: string; audioUrl: string };
+
+export const VOICE_LINES = {
+  startSession: {
+    text: "All aboard! Let's get this study session rolling.", // PLACEHOLDER caption
+    audioUrl: "/audio/start_session1.mp3",
+  },
+  greatSession: {
+    text: "Great session! You kept this train right on time.", // PLACEHOLDER caption
+    audioUrl: "/audio/great_session1.mp3",
+  },
+  passQuiz: {
+    text: "Quiz passed. Full steam ahead!", // PLACEHOLDER caption
+    audioUrl: "/audio/pass_quiz1.mp3",
+  },
+} as const satisfies Record<string, VoiceLine>;
+
+export type VoiceLineId = keyof typeof VOICE_LINES;
+```
+
+- [ ] **Step 4: Run the lines test**
+
+Run: `cd apps/web && bun test src/features/speech/lines.test.ts`
+Expected: PASS, 2 tests.
+
+- [ ] **Step 5: Write the failing departure tests**
+
+`apps/web/src/features/speech/departure.test.ts`:
+
+```ts
+import { beforeEach, describe, expect, test } from "bun:test";
+import type { TrainState } from "@grugchug/shared";
+import { useWorld } from "@/features/world";
+import { createDepartureAnnouncer } from "./departure";
+import { VOICE_LINES } from "./lines";
+
+const local: TrainState = {
+  id: "local",
+  owner: { name: "You", spriteUrl: "/characters/poku.png" },
+  phase: "stopped",
+  efficiency: 0.5,
+  lane: 0,
+};
+
+const friend: TrainState = { ...local, id: "friend", lane: 1 };
+
+const speechOf = (id: string) => useWorld.getState().trains[id]?.speech;
+
+beforeEach(() => {
+  useWorld.setState({ trains: {}, localTrainId: null });
+});
+
+describe("createDepartureAnnouncer", () => {
+  test("announces when the local train appears running", () => {
+    const announcer = createDepartureAnnouncer();
+    announcer.start();
+    const w = useWorld.getState();
+    w.addTrain({ ...local, phase: "running" });
+    w.setLocalTrainId("local");
+    expect(speechOf("local")?.text).toBe(VOICE_LINES.startSession.text);
+    expect(speechOf("local")?.audioUrl).toBe("/audio/start_session1.mp3");
+  });
+
+  test("announces a departure from stopped to running", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.setLocalTrainId("local");
+    const announcer = createDepartureAnnouncer();
+    announcer.start();
+    expect(speechOf("local")).toBeUndefined();
+    w.setPhase("local", "running");
+    expect(speechOf("local")?.text).toBe(VOICE_LINES.startSession.text);
+  });
+
+  test("does not announce a train that is already running when it starts", () => {
+    const w = useWorld.getState();
+    w.addTrain({ ...local, phase: "running" });
+    w.setLocalTrainId("local");
+    createDepartureAnnouncer().start();
+    w.setEfficiency("local", 0.9);
+    expect(speechOf("local")).toBeUndefined();
+  });
+
+  test("does not announce stopping", () => {
+    const w = useWorld.getState();
+    w.addTrain({ ...local, phase: "running" });
+    w.setLocalTrainId("local");
+    createDepartureAnnouncer().start();
+    w.setPhase("local", "stopped");
+    expect(speechOf("local")).toBeUndefined();
+  });
+
+  test("ignores friend trains", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.setLocalTrainId("local");
+    w.addTrain(friend);
+    createDepartureAnnouncer().start();
+    w.setPhase("friend", "running");
+    expect(speechOf("friend")).toBeUndefined();
+    expect(speechOf("local")).toBeUndefined();
+  });
+
+  test("announces every departure with a fresh utterance", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.setLocalTrainId("local");
+    createDepartureAnnouncer().start();
+    w.setPhase("local", "running");
+    const first = speechOf("local")?.id;
+    w.setPhase("local", "stopped");
+    w.setPhase("local", "running");
+    expect(speechOf("local")?.id).toBeTruthy();
+    expect(speechOf("local")?.id).not.toBe(first);
+  });
+
+  test("stop unsubscribes", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.setLocalTrainId("local");
+    const announcer = createDepartureAnnouncer();
+    announcer.start();
+    announcer.stop();
+    w.setPhase("local", "running");
+    expect(speechOf("local")).toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 6: Run to verify failure**
+
+Run: `cd apps/web && bun test src/features/speech/departure.test.ts`
+Expected: FAIL, cannot find module `./departure`.
+
+- [ ] **Step 7: Write departure.ts**
+
+```ts
+import type { TrainPhase } from "@grugchug/shared";
+import { useWorld } from "@/features/world";
+import { VOICE_LINES } from "./lines";
+
+export type DepartureAnnouncer = { start(): void; stop(): void };
+
+// Says the start-of-session line whenever the local train departs: when it
+// first appears running (a session starting) or goes from stopped to running.
+// Whatever is already running when the announcer starts is not a departure,
+// so coming back to the session page does not replay the line. A driver like
+// the player: it reaches the world only through `say`.
+export function createDepartureAnnouncer(): DepartureAnnouncer {
+  let unsubscribe: (() => void) | null = null;
+  let lastPhase: TrainPhase | undefined;
+
+  const localTrain = () => {
+    const { localTrainId, trains } = useWorld.getState();
+    return {
+      id: localTrainId,
+      phase: localTrainId === null ? undefined : trains[localTrainId]?.phase,
+    };
+  };
+
+  const sync = () => {
+    const { id, phase } = localTrain();
+    const departed = id !== null && phase === "running" && lastPhase !== "running";
+    // Record before saying: `say` writes the store, which re-enters this
+    // listener synchronously, and it must see the phase as already handled.
+    lastPhase = phase;
+    if (!departed) return;
+    const line = VOICE_LINES.startSession;
+    useWorld.getState().say(id, line.text, line.audioUrl);
+  };
+
+  return {
+    start() {
+      if (unsubscribe) return;
+      lastPhase = localTrain().phase;
+      unsubscribe = useWorld.subscribe(sync);
+    },
+    stop() {
+      unsubscribe?.();
+      unsubscribe = null;
+    },
+  };
+}
+```
+
+- [ ] **Step 8: Run the departure tests**
+
+Run: `cd apps/web && bun test src/features/speech/departure.test.ts`
+Expected: PASS, 7 tests.
+
+- [ ] **Step 9: Write the hook and extend the index**
+
+`apps/web/src/features/speech/use-departure-announcer.ts`:
+
+```ts
+import { useEffect } from "react";
+import { createDepartureAnnouncer } from "./departure";
+
+// Mount once on the page that shows the world, alongside useSpeechPlayer.
+export function useDepartureAnnouncer(): void {
+  useEffect(() => {
+    const announcer = createDepartureAnnouncer();
+    announcer.start();
+    return () => announcer.stop();
+  }, []);
+}
+```
+
+Replace `apps/web/src/features/speech/index.ts` with:
+
+```ts
+// Conductor speech. The player watches the world for new utterances, plays the
+// voice clip (or waits a text-length fallback), and clears the speech when it
+// is over; it is the only thing that ever clears speech. The departure
+// announcer says the start-of-session line when the local train departs, and
+// lines.ts is the registry of clips a conductor can say. The scene just shows
+// whatever speech a train has.
+export { useDepartureAnnouncer } from "./use-departure-announcer";
+export { type VoiceLine, type VoiceLineId, VOICE_LINES } from "./lines";
+export { useSpeechPlayer } from "./use-speech-player";
+```
+
+- [ ] **Step 10: Typecheck, lint, tests**
+
+Run: `cd apps/web && bun test src/features/speech && cd ../.. && bun run typecheck && bun run lint`
+Expected: pass; speech tests now 21 (3 duration + 9 player + 2 lines + 7 departure).
+
+- [ ] **Step 11: Commit**
+
+```bash
+bun run fmt
+git add apps/web/src/features/speech/lines.ts apps/web/src/features/speech/lines.test.ts \
+  apps/web/src/features/speech/departure.ts apps/web/src/features/speech/departure.test.ts \
+  apps/web/src/features/speech/use-departure-announcer.ts apps/web/src/features/speech/index.ts
+git commit -m "Add voice-line registry and announce departures
+
+Three clips registered with placeholder captions; the local conductor
+says the start-of-session line when its train appears running or pulls
+out of a station.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
+```
+
+---
+
 ## Deviations (recorded after implementation)
 
 - A clip that errors or whose `play()` rejects falls back to the text-length
