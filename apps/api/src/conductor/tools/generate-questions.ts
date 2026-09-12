@@ -3,7 +3,7 @@
 // frontend were built against. mcq needs correctIndex; short needs both a
 // rubric and a referenceAnswer for grade-answer.ts to use later. Flash
 // tier; the harness decides whether to escalate.
-import { materialSchema, questionSchema } from "@grugchug/shared";
+import { MAX_MATERIALS, materialSchema, questionSchema } from "@grugchug/shared";
 import { z } from "zod";
 import { fixtureRoutePlan } from "../fixtures";
 import { CONFIDENCE_THRESHOLD, defineTool, type ToolSpec } from "../harness";
@@ -11,7 +11,7 @@ import { materialParts } from "../material-parts";
 
 export const generateQuestionsInputSchema = z.object({
   scope: z.string().min(1),
-  material: materialSchema,
+  materials: z.array(materialSchema).min(1).max(MAX_MATERIALS),
 });
 export type GenerateQuestionsInput = z.infer<typeof generateQuestionsInputSchema>;
 
@@ -47,7 +47,7 @@ Respond with JSON only, matching exactly this shape:
 Order does not matter, but the list must contain exactly 3 "mcq" entries and exactly 1 "short" entry.
 confidence is for the conductor's internal quality check only; still include it.`,
       },
-      ...materialParts(input.material),
+      ...materialParts(input.materials),
     ],
     fixture: () => {
       const station = fixtureRoutePlan.stations[0];

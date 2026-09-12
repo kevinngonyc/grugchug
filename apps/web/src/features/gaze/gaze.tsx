@@ -161,7 +161,16 @@ export function Gaze({
 
     webgazer.begin();
 
-    const interval = setInterval(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const stopSampling = () => {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const sample = () => {
       const positions = webgazer.getTracker()?.getPositions() ?? null;
       const pose = positions ? computeHeadPose(positions) : null;
 
@@ -251,10 +260,40 @@ export function Gaze({
           awayForMs,
         });
       }
-    }, 200);
+    };
+
+    const startSampling = () => {
+      stopSampling();
+      interval = setInterval(sample, 200);
+    };
+
+    // Background tabs still ran face mesh before this — pause the tracker and
+    // the 200ms sample loop while hidden, and treat the learner as away.
+    const onVisibility = () => {
+      if (document.hidden) {
+        stopSampling();
+        webgazer.pause();
+        onFacingRef.current?.(false);
+        setLookingAway(true);
+      } else {
+        void webgazer.resume().then(() => {
+          if (!document.hidden) startSampling();
+        });
+      }
+    };
+
+    if (document.hidden) {
+      webgazer.pause();
+      onFacingRef.current?.(false);
+      setLookingAway(true);
+    } else {
+      startSampling();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopSampling();
       webgazer.end();
     };
   }, [awayThresholdMs, yawThreshold, pitchThresholdDown, pitchThresholdUp, debug]);

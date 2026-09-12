@@ -53,7 +53,7 @@ describe("createPlan", () => {
       post("/api/conductor/plans", {
         userId: "u1",
         availableMinutes: 20,
-        material: { kind: "text", text: "notes" },
+        materials: [{ kind: "text", text: "notes" }],
       }),
       {
         runPlanRoute: async () => toolResult<PlanRouteOutput>({ stations: skeletons }),
@@ -79,13 +79,65 @@ describe("createPlan", () => {
     expect(saved?.totalEstimatedMinutes).toBe(20);
   });
 
+  test("builds one route from every uploaded material and hands them all to both tools", async () => {
+    const materials = [
+      { kind: "text" as const, text: "lecture one" },
+      { kind: "text" as const, text: "lecture two" },
+    ];
+    let planRouteMaterials: unknown;
+    let questionMaterials: unknown;
+    let saved: RoutePlan | undefined;
+
+    const res = await createPlanWithDeps(
+      post("/api/conductor/plans", { userId: "u1", materials }),
+      {
+        runPlanRoute: async (input) => {
+          planRouteMaterials = input.materials;
+          return toolResult<PlanRouteOutput>({ stations: skeletons });
+        },
+        runGenerateQuestions: async (input) => {
+          questionMaterials = input.materials;
+          return toolResult<GenerateQuestionsOutput>({ questions: fourQuestions });
+        },
+        save: async (plan) => {
+          saved = plan;
+        },
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(planRouteMaterials).toEqual(materials);
+    expect(questionMaterials).toEqual(materials);
+    // The hash covers the whole set, so dropping a file is different material.
+    expect(saved?.materialHash).not.toBe("");
+  });
+
+  test("rejects a request with no materials at all", async () => {
+    const res = await createPlanWithDeps(
+      post("/api/conductor/plans", { userId: "u1", materials: [] }),
+      {
+        runPlanRoute: async () => {
+          throw new Error("should not be called");
+        },
+        runGenerateQuestions: async () => {
+          throw new Error("should not be called");
+        },
+        save: async () => {
+          throw new Error("should not be called");
+        },
+      },
+    );
+
+    expect(res.status).toBe(400);
+  });
+
   test("falls back to fixture questions for a station whose generation call throws, without failing the route", async () => {
     let calls = 0;
     const res = await createPlanWithDeps(
       post("/api/conductor/plans", {
         userId: "u1",
         availableMinutes: 20,
-        material: { kind: "text", text: "notes" },
+        materials: [{ kind: "text", text: "notes" }],
       }),
       {
         runPlanRoute: async () => toolResult<PlanRouteOutput>({ stations: skeletons }),
@@ -114,7 +166,7 @@ describe("createPlan", () => {
       post("/api/conductor/plans", {
         userId: "u1",
         availableMinutes: 20,
-        material: { kind: "text", text: "notes" },
+        materials: [{ kind: "text", text: "notes" }],
       }),
       {
         runPlanRoute: async () => toolResult<PlanRouteOutput>({ stations: skeletons }),

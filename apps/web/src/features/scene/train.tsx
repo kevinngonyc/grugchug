@@ -119,6 +119,7 @@ export function Train({ trainId, motion }: TrainProps) {
             position={CONDUCTOR_OFFSET}
             trainId={trainId}
             onClick={isLocal ? () => useConductorUi.getState().toggle() : undefined}
+            showTimer={isLocal}
           />
         </Suspense>
         {spriteUrl ? (

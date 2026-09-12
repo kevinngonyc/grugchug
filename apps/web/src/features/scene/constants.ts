@@ -85,11 +85,20 @@ export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
 // with the closer camera this keeps the bubble readable locally and a
 // little smaller on farther lanes. Tune by eye in the dev panel.
 export const BUBBLE_OFFSET: [number, number, number] = [0, CHARACTER_SIZE[1] / 2 + 0.15, 0];
+// Sit just above the conductor's head (sprite top is CHARACTER_SIZE[1] / 2).
+export const TIMER_LABEL_OFFSET: [number, number, number] = [0, CHARACTER_SIZE[1] / 2 + 0.12, 0];
 export const BUBBLE_DISTANCE_FACTOR = 8;
 // The conductor bobs while its train has speech.
 export const BOB_AMPLITUDE = 0.1; // metres
 export const BOB_FREQUENCY = 9; // radians per second, about 1.4 bobs a second
 export const BOB_EASE = 6; // per second; how quickly the bob fades in and out
+// Nobody stands perfectly still: every sprite keeps a slow, shallow bob when
+// its train has nothing to say, as a fraction of the speaking amplitude.
+export const IDLE_BOB_FRACTION = 0.3;
+export const IDLE_BOB_FREQUENCY = 3.4; // radians per second, a quicker breath
+
+// A clickable sprite grows slightly under the pointer — the whole hover hint.
+export const HOVER_SCALE = 1.09;
 
 // Voice level and distance falloff, in the same metres as the scene.
 export const VOICE_GAIN = 0.35;

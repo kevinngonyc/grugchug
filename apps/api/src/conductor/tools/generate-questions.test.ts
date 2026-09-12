@@ -15,7 +15,7 @@ function fakeProvider(text: string): LLMProvider {
 function inputFor(caseName: string) {
   return {
     scope: `Photosynthesis basics (${caseName})`,
-    material: { kind: "text" as const, text: "notes" },
+    materials: [{ kind: "text" as const, text: "notes" }],
   };
 }
 

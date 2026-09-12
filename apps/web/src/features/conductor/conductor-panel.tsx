@@ -3,38 +3,14 @@
 // studying, and repeat. All state lives in study-session.ts; this only
 // renders whichever view its current mode calls for.
 import type { Answer, PublicQuestion, PublicRoutePlan, PublicStation } from "@grugchug/shared";
-import { X } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { getUserId } from "@/lib/user-id";
-import { ConductorApiError, createPlan } from "./api";
+import { Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MaterialDropzone } from "./material-dropzone";
+import { useMaterialLibrary } from "./material-library";
+import { StationProgress } from "./station-progress";
 import { useConductorUi } from "./store";
 import { useStudySession } from "./study-session";
-import {
-  buttonClass,
-  cardClass,
-  inputClass,
-  labelClass,
-  secondaryButtonClass,
-  textareaClass,
-} from "./ui";
-
-// data:<mime>;base64,<payload> — the API wants only the payload.
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("could not read file"));
-        return;
-      }
-      const comma = result.indexOf(",");
-      resolve(comma === -1 ? result : result.slice(comma + 1));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("could not read file"));
-    reader.readAsDataURL(file);
-  });
-}
+import { buttonClass, cardClass, secondaryButtonClass, textareaClass } from "./ui";
 
 function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
@@ -79,7 +55,7 @@ export function ConductorPanel() {
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
-        {mode === "idle" && !plan && <UploadForm />}
+        {mode === "idle" && !plan && <LibraryHome />}
         {mode === "idle" && plan && <RouteSummary plan={plan} />}
         {(mode === "counting" || mode === "on-break") && <TimerView />}
         {mode === "at-station" && plan && <StationArrival plan={plan} />}
@@ -90,89 +66,50 @@ export function ConductorPanel() {
   );
 }
 
-function UploadForm() {
-  const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [availableMinutes, setAvailableMinutes] = useState(30);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const onSubmit = useCallback(
-    async (e: FormEvent) => {
-      e.preventDefault();
-      setError(null);
-
-      if (!file && text.trim().length === 0) {
-        setError("Paste some material, or choose a PDF.");
-        return;
-      }
-
-      setSubmitting(true);
-      try {
-        const material = file
-          ? ({ kind: "pdf", base64: await readFileAsBase64(file) } as const)
-          : ({ kind: "text", text } as const);
-        const result = await createPlan({ userId: getUserId(), availableMinutes, material });
-        useStudySession.getState().setPlan(result);
-      } catch (err) {
-        setError(err instanceof ConductorApiError ? err.message : "Something went wrong.");
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [file, text, availableMinutes],
-  );
+// Everything uploaded so far, and one Study button under it: a route covers
+// the whole set, so there is nothing to choose between here.
+function LibraryHome() {
+  const items = useMaterialLibrary((s) => s.items);
+  const busy = useStudySession((s) => s.busy);
+  const error = useStudySession((s) => s.error);
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <label className={labelClass} htmlFor="conductor-material">
-          Study material
-        </label>
-        <textarea
-          id="conductor-material"
-          className={textareaClass}
-          placeholder="Paste your notes here…"
-          value={text}
-          disabled={file !== null}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <MaterialDropzone />
 
-      <div className="flex flex-col gap-1">
-        <label className={labelClass} htmlFor="conductor-file">
-          Or upload a PDF
-        </label>
-        <input
-          id="conductor-file"
-          type="file"
-          accept="application/pdf"
-          className={inputClass}
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label className={labelClass} htmlFor="conductor-minutes">
-          Minutes available
-        </label>
-        <input
-          id="conductor-minutes"
-          type="number"
-          min={1}
-          max={600}
-          className={inputClass}
-          value={availableMinutes}
-          onChange={(e) => setAvailableMinutes(Number(e.target.value))}
-        />
-      </div>
+      {items.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {items.map((item) => (
+            <li key={item.id} className={`${cardClass} flex items-center gap-2 py-2`}>
+              <p className="min-w-0 flex-1 truncate text-sm font-medium">{item.name}</p>
+              <button
+                type="button"
+                className={secondaryButtonClass}
+                aria-label={`Remove ${item.name}`}
+                onClick={() => useMaterialLibrary.getState().remove(item.id)}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 
-      <button type="submit" className={buttonClass} disabled={submitting}>
-        {submitting ? "Building your route…" : "Create route"}
+      <button
+        type="button"
+        className={`${buttonClass} mt-auto`}
+        disabled={items.length === 0 || busy}
+        onClick={() => useStudySession.getState().studyAll()}
+      >
+        {busy
+          ? "Building your route…"
+          : items.length === 0
+            ? "Study"
+            : `Study ${items.length} material${items.length === 1 ? "" : "s"}`}
       </button>
-    </form>
+    </div>
   );
 }
 
@@ -211,7 +148,7 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
         className={secondaryButtonClass}
         onClick={() => useStudySession.getState().quit()}
       >
-        Upload different material
+        Back to library
       </button>
     </div>
   );
@@ -219,12 +156,15 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
 
 function TimerView() {
   const mode = useStudySession((s) => s.mode);
+  const plan = useStudySession((s) => s.plan);
+  const stationIndex = useStudySession((s) => s.stationIndex);
   const timerEndsAt = useStudySession((s) => s.timerEndsAt);
   const timerMessage = useStudySession((s) => s.timerMessage);
   const remaining = useRemainingSeconds(timerEndsAt);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+      {plan ? <StationProgress plan={plan} stationIndex={stationIndex} /> : null}
       <p className="text-3xl font-semibold tabular-nums">
         {remaining !== null ? formatDuration(remaining) : "--:--"}
       </p>
@@ -248,6 +188,7 @@ function StationArrival({ plan }: { plan: PublicRoutePlan }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <StationProgress plan={plan} stationIndex={stationIndex} />
       <p className="text-sm font-medium">You've arrived: {station.title}</p>
       {stationFeedback && <p className="text-xs text-muted-foreground">{stationFeedback}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
@@ -325,6 +266,7 @@ function AnsweringView({ plan }: { plan: PublicRoutePlan }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <StationProgress plan={plan} stationIndex={stationIndex} />
       <p className="text-sm font-medium">{station.title}</p>
       {station.questions.map((question) => (
         <QuestionField
@@ -356,7 +298,7 @@ function CompleteView() {
         className={buttonClass}
         onClick={() => useStudySession.getState().quit()}
       >
-        Upload new material
+        Back to library
       </button>
     </div>
   );

@@ -2,20 +2,19 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { ChatOverlay, readIdentity } from "@/features/chat";
 import { ConductorOverlay } from "@/features/conductor";
-import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/efficiency";
-import { Gaze } from "@/features/gaze";
+import { efficiencyFraction } from "@/features/efficiency";
 import { profileOwner, useProfile } from "@/features/profile";
 import { createVoiceAudio, TrainWorld } from "@/features/scene";
 import { useEfficiencyDrive, usePartyTrains } from "@/features/session";
 import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
 import { useWorld } from "@/features/world";
+import { FocusHud } from "./focus-hud";
 import { SessionDevPanel } from "./session-dev-panel";
 
 const LOCAL_TRAIN_ID = "local";
 
 export function Session() {
   const localTrainId = useWorld((s) => s.localTrainId);
-  const score = useEfficiency((s) => s.score);
   const user = useProfile((s) => s.user);
   const status = useProfile((s) => s.status);
   const load = useProfile((s) => s.load);
@@ -71,10 +70,7 @@ export function Session() {
     <div className="absolute inset-0">
       <TrainWorld />
       {dev ? <SessionDevPanel /> : null}
-      <div className="absolute bottom-4 left-4 z-10 rounded-lg bg-white/90 font-mono">
-        <div className="px-4 pt-3 text-sm font-semibold">Focus {Math.round(score)}/100</div>
-        <Gaze debug={dev} onFacing={reportAttention} />
-      </div>
+      <FocusHud debug={dev} />
       <ChatOverlay />
       <ConductorOverlay />
     </div>
