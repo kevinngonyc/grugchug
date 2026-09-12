@@ -146,4 +146,97 @@ describe("runTool", () => {
     expect(second.output).toEqual(first.output);
     expect(second.trace[0]).toMatchObject({ cacheHit: true });
   });
+
+  test("escalates when flash confidence is below the tool's threshold, even if the schema matches", async () => {
+    const spec = makeSpec({ confidenceThreshold: 0.6 });
+    let flashCalls = 0;
+    let proCalls = 0;
+    const resolve = (tier: Tier): LLMProvider => {
+      if (tier === "flash") {
+        return {
+          provider: "gemini",
+          model: "gemini-flash",
+          generate: async () => {
+            flashCalls++;
+            return {
+              text: '{"answer": 1, "confidence": 0.2}',
+              provider: "gemini",
+              model: "gemini-flash",
+            };
+          },
+        };
+      }
+      return {
+        provider: "gemini",
+        model: "gemini-pro",
+        generate: async () => {
+          proCalls++;
+          return {
+            text: '{"answer": 8, "confidence": 0.9}',
+            provider: "gemini",
+            model: "gemini-pro",
+          };
+        },
+      };
+    };
+
+    const result = await runTool(spec, { q: "unique-low-confidence-case" }, resolve);
+
+    expect(flashCalls).toBe(3);
+    expect(proCalls).toBe(1);
+    expect(result.output).toEqual({ answer: 8 });
+    expect(result.output).not.toHaveProperty("confidence");
+    expect(result.trace[0]?.error).toContain("below threshold");
+    expect(result.trace.at(-1)).toMatchObject({ tier: "pro", escalated: true, ok: true });
+  });
+
+  test("falls back to the fixture when the pro escalation's confidence is also below threshold", async () => {
+    const spec = makeSpec({ confidenceThreshold: 0.6 });
+    let flashCalls = 0;
+    let proCalls = 0;
+    const resolve = (tier: Tier): LLMProvider => {
+      if (tier === "flash") {
+        return {
+          provider: "gemini",
+          model: "gemini-flash",
+          generate: async () => {
+            flashCalls++;
+            return {
+              text: '{"answer": 1, "confidence": 0.2}',
+              provider: "gemini",
+              model: "gemini-flash",
+            };
+          },
+        };
+      }
+      return {
+        provider: "gemini",
+        model: "gemini-pro",
+        generate: async () => {
+          proCalls++;
+          // Even the bigger model isn't sure — no further escalation exists,
+          // so this must fall back to the fixture, not loop or throw.
+          return {
+            text: '{"answer": 8, "confidence": 0.3}',
+            provider: "gemini",
+            model: "gemini-pro",
+          };
+        },
+      };
+    };
+
+    const result = await runTool(spec, { q: "unique-low-confidence-pro-too-case" }, resolve);
+
+    expect(flashCalls).toBe(3);
+    expect(proCalls).toBe(1);
+    expect(result.fellBackToFixture).toBe(true);
+    expect(result.output).toEqual({ answer: -1 });
+    expect(result.trace.at(-1)).toMatchObject({ provider: "fixture", ok: true });
+    expect(result.trace.at(-2)).toMatchObject({
+      tier: "pro",
+      escalated: true,
+      ok: false,
+      error: expect.stringContaining("below threshold"),
+    });
+  });
 });
