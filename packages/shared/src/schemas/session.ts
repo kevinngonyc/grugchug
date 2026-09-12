@@ -53,6 +53,3 @@ export type StationResultRequest = z.infer<typeof stationResultRequestSchema>;
 // POST /api/study-sessions/:id/end
 export const endStudySessionRequestSchema = z.object({ outcome: studyOutcomeSchema });
 export type EndStudySessionRequest = z.infer<typeof endStudySessionRequestSchema>;
-
-/** @deprecated The old sitting record; removed once features/session stops re-exporting it. */
-export type Session = StudySession;

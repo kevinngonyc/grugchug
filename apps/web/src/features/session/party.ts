@@ -4,7 +4,8 @@
 // The people in your room are the people on the track beside you. They arrive
 // when they open the app and they are gone when they close it, because that is
 // exactly what the roster is.
-import type { ChatPresenceMember, TrainState } from "@grugchug/shared";
+import type { ChatPresenceMember, Journey, TrainPhase, TrainState } from "@grugchug/shared";
+import { avatarUrl } from "@/features/profile";
 
 /** Your own train is `local` and rides lane 0; everyone else is prefixed. */
 export const PARTY_TRAIN_PREFIX = "party:";
@@ -54,13 +55,23 @@ export function isPartyTrainId(id: string): boolean {
   return id.startsWith(PARTY_TRAIN_PREFIX);
 }
 
+// A friend's phase follows their journey. No journey means an older client
+// that never said, and those keep running as companions always did.
+export function phaseForJourney(journey: Journey | undefined): TrainPhase {
+  if (!journey) return "running";
+  if (journey.state === "studying") return "running";
+  if (journey.state === "finished") return "finished";
+  return "stopped";
+}
+
 /**
  * The trains that should exist for everyone else in the room, in lane order.
  * The roster arrives in the order people connected, so a newcomer pulls up on
  * the far side rather than shuffling everyone who was already here.
  *
- * They are always `running`: a friend's train is a companion, not a status
- * light, and stopping is a decision about your own session.
+ * A friend's train is a companion, not a status light, but it is also honest
+ * about their route: it stops when they do, and wears their own avatar when
+ * they have picked one.
  */
 export function partyTrains(
   members: readonly ChatPresenceMember[],
@@ -71,8 +82,11 @@ export function partyTrains(
     .slice(0, MAX_PARTY_TRAINS)
     .map((member, index) => ({
       id: partyTrainId(member.userId),
-      owner: { name: member.displayName, spriteUrl: spriteForUserId(member.userId) },
-      phase: "running" as const,
+      owner: {
+        name: member.displayName,
+        spriteUrl: member.avatar ? avatarUrl(member.avatar) : spriteForUserId(member.userId),
+      },
+      phase: phaseForJourney(member.journey),
       efficiency: Math.min(1, Math.max(0, member.efficiency)),
       lane: index + 1,
     }));
