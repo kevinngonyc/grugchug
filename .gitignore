@@ -1,5 +1,7 @@
 DaiSEE/
 landmarks/
+face.onnx
+face.onnx.data
 
 # Logs
 logs
