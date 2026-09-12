@@ -6,11 +6,12 @@ import { speechDuration } from "./duration";
 export type AudioLike = {
   play(): Promise<void>;
   pause(): void;
+  dispose?(): void;
   addEventListener(type: "ended" | "error", listener: () => void): void;
 };
 
 export type SpeechPlayerDeps = {
-  createAudio: (url: string) => AudioLike;
+  createAudio: (url: string, trainId: string) => AudioLike;
   setTimeout: (fn: () => void, ms: number) => unknown;
   clearTimeout: (handle: unknown) => void;
 };
@@ -29,6 +30,7 @@ export function createSpeechPlayer(deps: SpeechPlayerDeps): SpeechPlayer {
 
   const halt = (entry: Playing) => {
     entry.audio?.pause();
+    entry.audio?.dispose?.();
     if (entry.timer !== null) deps.clearTimeout(entry.timer);
   };
 
@@ -62,7 +64,13 @@ export function createSpeechPlayer(deps: SpeechPlayerDeps): SpeechPlayer {
       return;
     }
 
-    const audio = deps.createAudio(speech.audioUrl);
+    let audio: AudioLike;
+    try {
+      audio = deps.createAudio(speech.audioUrl, trainId);
+    } catch {
+      entry.timer = startTimer(trainId, speech);
+      return;
+    }
     entry.audio = audio;
     audio.addEventListener("ended", () => finish(trainId, speech.id));
 

@@ -4,7 +4,7 @@ import { ChatOverlay } from "@/features/chat";
 import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/efficiency";
 import { Gaze } from "@/features/gaze";
 import { profileOwner, useProfile } from "@/features/profile";
-import { TrainWorld } from "@/features/scene";
+import { createVoiceAudio, TrainWorld } from "@/features/scene";
 import { useEfficiencyDrive } from "@/features/session";
 import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
 import { useWorld } from "@/features/world";
@@ -23,7 +23,7 @@ export function Session() {
   // hands whatever they add up to on to the train.
   useEfficiencyDrive();
   // Conductors: play each utterance's clip and announce departures.
-  useSpeechPlayer();
+  useSpeechPlayer(createVoiceAudio);
   useDepartureAnnouncer();
 
   useEffect(() => {

@@ -17,6 +17,7 @@ const friend: TrainState = { ...local, id: "friend", lane: 1 };
 class FakeAudio implements AudioLike {
   url: string;
   paused = false;
+  disposed = false;
   playCalls = 0;
   rejectPlay = false;
   private listeners: Record<"ended" | "error", (() => void)[]> = { ended: [], error: [] };
@@ -33,6 +34,9 @@ class FakeAudio implements AudioLike {
   }
   addEventListener(type: "ended" | "error", listener: () => void): void {
     this.listeners[type].push(listener);
+  }
+  dispose(): void {
+    this.disposed = true;
   }
   fire(type: "ended" | "error"): void {
     for (const l of this.listeners[type]) l();
@@ -124,6 +128,24 @@ describe("createSpeechPlayer", () => {
     player.stop();
   });
 
+  test("unavailable audio falls back to text without losing the utterance", () => {
+    const timers = fakeTimers();
+    const player = createSpeechPlayer({
+      createAudio: () => {
+        throw new Error("Web Audio unavailable");
+      },
+      setTimeout: timers.setTimeout,
+      clearTimeout: timers.clearTimeout,
+    });
+    player.start();
+    useWorld.getState().say("local", "Hi", "/voices/1.mp3");
+    expect(speechOf("local")?.text).toBe("Hi");
+    expect(timers.pending).toHaveLength(1);
+    timers.runAll();
+    expect(speechOf("local")).toBeUndefined();
+    player.stop();
+  });
+
   test("a clip that errors falls back to the text timer once", async () => {
     const { audios, timers, player } = setup({ rejectPlay: true });
     player.start();
@@ -149,6 +171,7 @@ describe("createSpeechPlayer", () => {
     useWorld.getState().say("local", "one", "/voices/1.mp3");
     useWorld.getState().say("local", "two", "/voices/2.mp3");
     expect(audios[0]?.paused).toBe(true);
+    expect(audios[0]?.disposed).toBe(true);
     audios[0]?.fire("ended");
     expect(speechOf("local")?.text).toBe("two");
     audios[1]?.fire("ended");
@@ -176,6 +199,7 @@ describe("createSpeechPlayer", () => {
     useWorld.getState().say("local", "one", "/voices/1.mp3");
     useWorld.getState().removeTrain("local");
     expect(audios[0]?.paused).toBe(true);
+    expect(audios[0]?.disposed).toBe(true);
   });
 
   test("stop pauses clips, clears their speech, and stops listening", () => {
@@ -184,6 +208,7 @@ describe("createSpeechPlayer", () => {
     useWorld.getState().say("local", "one", "/voices/1.mp3");
     player.stop();
     expect(audios[0]?.paused).toBe(true);
+    expect(audios[0]?.disposed).toBe(true);
     expect(speechOf("local")).toBeUndefined();
     useWorld.getState().say("local", "two", "/voices/2.mp3");
     expect(audios).toHaveLength(1);

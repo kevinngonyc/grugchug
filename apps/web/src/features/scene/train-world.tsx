@@ -14,6 +14,7 @@ import { Hills } from "./hills";
 import { Lane } from "./lane";
 import { ALL_MODEL_URLS } from "./models";
 import { createMotion, registerMotion, stepMotion, unregisterMotion } from "./motion";
+import { VoiceListener } from "./voice-listener";
 
 for (const url of ALL_MODEL_URLS) useGLTF.preload(url);
 
@@ -24,6 +25,7 @@ export function TrainWorld() {
       onCreated={({ camera }) => camera.lookAt(...CAMERA_LOOK_AT)}
       dpr={[1, 1.5]}
     >
+      <VoiceListener />
       <color attach="background" args={[SKY_COLOR]} />
       <fog attach="fog" args={[SKY_COLOR, 30, 70]} />
       <ambientLight intensity={0.8} />

@@ -1,7 +1,7 @@
 import { Billboard, useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
-import { type Group, SRGBColorSpace } from "three";
+import { type Group, SRGBColorSpace, Vector3 } from "three";
 import { useWorld } from "@/features/world";
 import {
   BOB_AMPLITUDE,
@@ -11,6 +11,7 @@ import {
   CHARACTER_SIZE,
 } from "./constants";
 import { SpeechBubble } from "./speech-bubble";
+import { updateVoicePosition } from "./voice-audio";
 
 type CharacterProps = {
   url: string;
@@ -30,6 +31,7 @@ export function Character({ url, position = CHARACTER_OFFSET, trainId }: Charact
   texture.colorSpace = SRGBColorSpace;
 
   const bob = useRef<Group>(null);
+  const voicePosition = useRef(new Vector3());
   // Amplitude eases toward 1 while speaking and back to 0 after; the phase
   // only advances while there is amplitude, so the sprite settles instead of
   // snapping and every line starts from rest.
@@ -49,7 +51,11 @@ export function Character({ url, position = CHARACTER_OFFSET, trainId }: Charact
       phase.current += BOB_FREQUENCY * step;
     }
     if (bob.current) {
-      bob.current.position.y = amplitude.current * BOB_AMPLITUDE * Math.sin(phase.current);
+      // Bounce above the resting point, never down through the cab roof.
+      bob.current.position.y =
+        (amplitude.current * BOB_AMPLITUDE * (1 - Math.cos(phase.current))) / 2;
+      bob.current.getWorldPosition(voicePosition.current);
+      updateVoicePosition(trainId, voicePosition.current);
     }
   });
 

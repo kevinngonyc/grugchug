@@ -62,17 +62,23 @@ export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
 
 // Speech. The bubble's tail sits this far above the sprite's centre. drei
 // scales the bubble by BUBBLE_DISTANCE_FACTOR / (2 * tan(fov/2) * distance);
-// with the camera about 12.5 m from lane 0 that is roughly 1x there and a
+// with the closer camera this keeps the bubble readable locally and a
 // little smaller on farther lanes. Tune by eye in the dev panel.
 export const BUBBLE_OFFSET: [number, number, number] = [0, CHARACTER_SIZE[1] / 2 + 0.15, 0];
 export const BUBBLE_DISTANCE_FACTOR = 8;
 // The conductor bobs while its train has speech.
-export const BOB_AMPLITUDE = 0.12; // metres
+export const BOB_AMPLITUDE = 0.1; // metres
 export const BOB_FREQUENCY = 9; // radians per second, about 1.4 bobs a second
 export const BOB_EASE = 6; // per second; how quickly the bob fades in and out
 
-// Camera
-export const CAMERA_POSITION: [number, number, number] = [-1.4, 5, -12];
+// Voice level and distance falloff, in the same metres as the scene.
+export const VOICE_GAIN = 0.35;
+export const VOICE_REF_DISTANCE = 10;
+export const VOICE_ROLLOFF = 1.2;
+export const VOICE_RESUME_TIMEOUT_MS = 1000;
+
+// Camera: moved along the same viewing direction for a closer train view.
+export const CAMERA_POSITION: [number, number, number] = [-1.4, 4.4, -10];
 export const CAMERA_LOOK_AT: [number, number, number] = [-1.4, 1.2, 1];
 export const CAMERA_FOV = 35;
 
