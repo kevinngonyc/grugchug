@@ -190,6 +190,21 @@ describe("tick", () => {
     expect(useWorld.getState().trains.local?.phase).toBe("stopped");
   });
 
+  test("a fresh arrival clears the last station's feedback and scores", () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({
+      mode: "counting",
+      timerEndsAt: Date.now() - 1,
+      stationFeedback: "Great work.",
+      results: { q1: { questionId: "q1", score: 1, passed: true, feedback: "Correct." } },
+    });
+
+    useStudySession.getState().tick();
+
+    expect(useStudySession.getState().stationFeedback).toBeNull();
+    expect(useStudySession.getState().results).toEqual({});
+  });
+
   test("returns to at-station without touching train phase once a break elapses", () => {
     useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "on-break", timerEndsAt: Date.now() - 1 });
@@ -216,7 +231,7 @@ describe("submitAllAndFinish", () => {
     useStudySession.getState().setAnswer("q2", { type: "short", text: "because" });
   }
 
-  test("advances to the next station and starts its timer when the station passes", async () => {
+  test("advances and shows the result, but leaves the timer for the learner to start", async () => {
     apiMocks.submitAnswer.mockImplementation(async (_stationId, body: { questionId: string }) => ({
       questionId: body.questionId,
       score: 1,
@@ -224,9 +239,9 @@ describe("submitAllAndFinish", () => {
       feedback: "Correct.",
     }));
     apiMocks.evaluateProgress.mockResolvedValue({ passed: true, feedback: "Great work." });
-    apiMocks.setTimer.mockResolvedValue({ minutes: 8, message: "Next up" });
 
     useStudySession.getState().startSession(plan);
+    useWorld.getState().setPhase("local", "stopped");
     useStudySession.setState({ mode: "answering" });
     answerEverything();
 
@@ -234,7 +249,16 @@ describe("submitAllAndFinish", () => {
 
     const s = useStudySession.getState();
     expect(s.stationIndex).toBe(1);
-    expect(s.mode).toBe("counting"); // startStudying ran for station 2
+    expect(s.mode).toBe("passed");
+    expect(s.stationFeedback).toBe("Great work.");
+    expect(s.results.q1?.feedback).toBe("Correct.");
+    // Still parked: nothing has started the next station's timer yet.
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+
+    apiMocks.setTimer.mockResolvedValue({ minutes: 8, message: "Next up" });
+    await useStudySession.getState().startStudying();
+
+    expect(useStudySession.getState().mode).toBe("counting");
     expect(useWorld.getState().trains.local?.phase).toBe("running");
   });
 
@@ -257,6 +281,7 @@ describe("submitAllAndFinish", () => {
     expect(s.stationIndex).toBe(0);
     expect(s.mode).toBe("at-station");
     expect(s.stationFeedback).toBe("Try again.");
+    expect(s.results.q1?.feedback).toBe("Not quite.");
   });
 
   test("reaches complete after the last station passes", async () => {

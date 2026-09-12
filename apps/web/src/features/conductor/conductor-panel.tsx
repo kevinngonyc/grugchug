@@ -2,7 +2,13 @@
 // it produces — start the timer, arrive at a station, answer or keep
 // studying, and repeat. All state lives in study-session.ts; this only
 // renders whichever view its current mode calls for.
-import type { Answer, PublicQuestion, PublicRoutePlan, PublicStation } from "@grugchug/shared";
+import type {
+  Answer,
+  AnswerResult,
+  PublicQuestion,
+  PublicRoutePlan,
+  PublicStation,
+} from "@grugchug/shared";
 import { Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MaterialDropzone } from "./material-dropzone";
@@ -60,6 +66,7 @@ export function ConductorPanel() {
         {(mode === "counting" || mode === "on-break") && <TimerView />}
         {mode === "at-station" && plan && <StationArrival plan={plan} />}
         {mode === "answering" && plan && <AnsweringView plan={plan} />}
+        {mode === "passed" && plan && <PassedView plan={plan} />}
         {mode === "complete" && <CompleteView />}
       </div>
     </div>
@@ -178,11 +185,49 @@ function TimerView() {
   );
 }
 
+// Per-question score and feedback under a station, once it has been graded.
+// Shared by the failed-attempt, passed, and finished views — every place a
+// grading result needs to actually be seen, rather than only kept in state.
+function QuestionResults({
+  questions,
+  results,
+}: {
+  questions: readonly PublicQuestion[];
+  results: Record<string, AnswerResult>;
+}) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {questions.map((question) => {
+        const result = results[question.id];
+        if (!result) return null;
+        return (
+          <li key={question.id} className={cardClass}>
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-medium">{question.prompt}</p>
+              <span
+                className={`shrink-0 text-xs font-semibold tabular-nums ${
+                  result.passed ? "text-primary" : "text-destructive"
+                }`}
+              >
+                {Math.round(result.score * 100)}%
+              </span>
+            </div>
+            {result.feedback && (
+              <p className="mt-1 text-xs text-muted-foreground">{result.feedback}</p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function StationArrival({ plan }: { plan: PublicRoutePlan }) {
   const stationIndex = useStudySession((s) => s.stationIndex);
   const busy = useStudySession((s) => s.busy);
   const error = useStudySession((s) => s.error);
   const stationFeedback = useStudySession((s) => s.stationFeedback);
+  const results = useStudySession((s) => s.results);
   const station = plan.stations[stationIndex];
   if (!station) return null;
 
@@ -191,6 +236,9 @@ function StationArrival({ plan }: { plan: PublicRoutePlan }) {
       <StationProgress plan={plan} stationIndex={stationIndex} />
       <p className="text-sm font-medium">You've arrived: {station.title}</p>
       {stationFeedback && <p className="text-xs text-muted-foreground">{stationFeedback}</p>}
+      {Object.keys(results).length > 0 && (
+        <QuestionResults questions={station.questions} results={results} />
+      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <button
         type="button"
@@ -289,10 +337,43 @@ function AnsweringView({ plan }: { plan: PublicRoutePlan }) {
   );
 }
 
+// Graded and passed, with more stations ahead: shows the result rather than
+// racing straight on to the next timer, so it can actually be seen before the
+// train departs again.
+function PassedView({ plan }: { plan: PublicRoutePlan }) {
+  const stationIndex = useStudySession((s) => s.stationIndex);
+  const stationFeedback = useStudySession((s) => s.stationFeedback);
+  const results = useStudySession((s) => s.results);
+  const busy = useStudySession((s) => s.busy);
+  const error = useStudySession((s) => s.error);
+  // The station just graded is the one before the one already advanced to.
+  const gradedStation = plan.stations[stationIndex - 1];
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-medium text-primary">Nice work — you passed this station!</p>
+      {stationFeedback && <p className="text-xs text-muted-foreground">{stationFeedback}</p>}
+      {gradedStation && <QuestionResults questions={gradedStation.questions} results={results} />}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <button
+        type="button"
+        className={buttonClass}
+        disabled={busy}
+        onClick={() => useStudySession.getState().startStudying()}
+      >
+        {busy ? "Starting…" : "Continue to the next station"}
+      </button>
+    </div>
+  );
+}
+
 function CompleteView() {
+  const stationFeedback = useStudySession((s) => s.stationFeedback);
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
       <p className="text-sm font-medium">You've finished this material!</p>
+      {stationFeedback && <p className="text-xs text-muted-foreground">{stationFeedback}</p>}
       <button
         type="button"
         className={buttonClass}
