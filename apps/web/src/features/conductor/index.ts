@@ -9,6 +9,7 @@
 
 export { ConductorOverlay } from "./conductor-overlay";
 export { fetchHistory } from "./history";
+export { SessionHistory } from "./session-history";
 export { useConductorUi } from "./store";
 export { applyStudyPhase, journeyForSession, phaseForMode, useStudyDrive } from "./study-drive";
 export { useStudySession } from "./study-session";

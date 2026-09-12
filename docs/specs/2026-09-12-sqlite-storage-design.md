@@ -106,3 +106,17 @@ files that write SQL.
   databases start empty.
 - Multi-instance deployment. If the API ever runs more than one process, this
   is the spec to revisit.
+
+## Deviations (recorded after implementation)
+
+- None structural: the schema, pragmas, store signatures, and testing
+  approach landed as this spec describes. `memoryUserRepo` was removed as
+  planned, and its tests now run against `sqliteUserRepo(openDatabase(":memory:"))`
+  instead.
+- An intermediate step of the migration (moving `db.ts` before `chat/store.ts`
+  and `conductor/store.ts` were converted) briefly shimmed `getDb()` to
+  return `Promise<Db>` rather than `Promise<never>`, since a `never`-typed
+  shim failed `bun run typecheck` against the still-Mongo call sites at that
+  point in the sequence. It was a transient typing detail of the rollout
+  order, not a change to the design, and the final code carries no trace of
+  it.
