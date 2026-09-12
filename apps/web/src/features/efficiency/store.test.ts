@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { EFFICIENCY_SCORE_MAX, EFFICIENCY_SCORE_MIN, EFFICIENCY_SCORE_NEUTRAL } from "@grugchug/shared";
+import {
+  EFFICIENCY_SCORE_MAX,
+  EFFICIENCY_SCORE_MIN,
+  EFFICIENCY_SCORE_NEUTRAL,
+} from "@grugchug/shared";
 import { ATTENTION_HALF_LIFE_MS } from "./attention";
 import {
   ATTENTION_SOURCE,
@@ -12,14 +16,12 @@ import {
 // Seeds full attention directly, bypassing foldAttention's neutral opening —
 // for tests where "eyes on the screen" is the setup, not the thing under test.
 function seedFullAttention(at: number): void {
-  useEfficiency
-    .getState()
-    .report(ATTENTION_SOURCE, 1, {
-      label: "Eyes on screen",
-      weight: ATTENTION_WEIGHT,
-      halfLifeMs: ATTENTION_STALE_HALF_LIFE_MS,
-      at,
-    });
+  useEfficiency.getState().report(ATTENTION_SOURCE, 1, {
+    label: "Eyes on screen",
+    weight: ATTENTION_WEIGHT,
+    halfLifeMs: ATTENTION_STALE_HALF_LIFE_MS,
+    at,
+  });
 }
 
 const NOW = 1_757_000_000_000;
@@ -71,7 +73,9 @@ test("re-reporting keeps the weight and half-life it was given", () => {
 
 test("ticking lets an old signal fade without anyone reporting", () => {
   seedFullAttention(NOW);
-  useEfficiency.getState().report("quiz", 0, { label: "Quiz", weight: 1, halfLifeMs: 60_000, at: NOW });
+  useEfficiency
+    .getState()
+    .report("quiz", 0, { label: "Quiz", weight: 1, halfLifeMs: 60_000, at: NOW });
   expect(useEfficiency.getState().score).toBeCloseTo(50, 6);
 
   useEfficiency.getState().tick(NOW + 7 * 60_000);
