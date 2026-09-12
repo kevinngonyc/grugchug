@@ -67,7 +67,7 @@ export function ConductorPanel() {
         {mode === "at-station" && plan && <StationArrival plan={plan} />}
         {mode === "answering" && plan && <AnsweringView plan={plan} />}
         {mode === "passed" && plan && <PassedView plan={plan} />}
-        {mode === "complete" && <CompleteView />}
+        {mode === "complete" && <CompleteView plan={plan} />}
       </div>
     </div>
   );
@@ -185,6 +185,42 @@ function TimerView() {
   );
 }
 
+// mcq and multi are right or wrong, full stop — a "73% correct" reads as a
+// partial-credit score that doesn't exist for a single-choice or
+// select-all-that-apply question. Only a short answer actually has a
+// percentage, since a rubric can be partly satisfied.
+function scoreLabel(question: PublicQuestion, result: AnswerResult): string {
+  if (question.type === "short") return `${Math.round(result.score * 100)}%`;
+  return result.passed ? "✓ Correct" : "✗ Incorrect";
+}
+
+function overallScore(results: Record<string, AnswerResult>): number {
+  const scores = Object.values(results).map((r) => r.score);
+  if (scores.length === 0) return 0;
+  return scores.reduce((sum, s) => sum + s, 0) / scores.length;
+}
+
+// The headline the learner actually asked for: did I pass, and what was my
+// overall score — separate from, and above, the per-question breakdown.
+function ResultBanner({
+  passed,
+  results,
+}: {
+  passed: boolean;
+  results: Record<string, AnswerResult>;
+}) {
+  return (
+    <div
+      className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+        passed ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+      }`}
+    >
+      {passed ? "✓ Passed" : "✗ Not passed yet"} — {Math.round(overallScore(results) * 100)}%
+      overall
+    </div>
+  );
+}
+
 // Per-question score and feedback under a station, once it has been graded.
 // Shared by the failed-attempt, passed, and finished views — every place a
 // grading result needs to actually be seen, rather than only kept in state.
@@ -209,7 +245,7 @@ function QuestionResults({
                   result.passed ? "text-primary" : "text-destructive"
                 }`}
               >
-                {Math.round(result.score * 100)}%
+                {scoreLabel(question, result)}
               </span>
             </div>
             {result.feedback && (
@@ -235,9 +271,12 @@ function StationArrival({ plan }: { plan: PublicRoutePlan }) {
     <div className="flex flex-col gap-3">
       <StationProgress plan={plan} stationIndex={stationIndex} />
       <p className="text-sm font-medium">You've arrived: {station.title}</p>
-      {stationFeedback && <p className="text-xs text-muted-foreground">{stationFeedback}</p>}
-      {Object.keys(results).length > 0 && (
-        <QuestionResults questions={station.questions} results={results} />
+      {stationFeedback && (
+        <>
+          <ResultBanner passed={false} results={results} />
+          <p className="text-xs text-muted-foreground">{stationFeedback}</p>
+          <QuestionResults questions={station.questions} results={results} />
+        </>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <button
@@ -281,6 +320,27 @@ function QuestionField({
               checked={answer?.type === "mcq" && answer.choiceIndex === i}
               onChange={() => onChange({ type: "mcq", choiceIndex: i })}
             />
+            {choice}
+          </label>
+        ))}
+      </fieldset>
+    );
+  }
+  if (question.type === "multi") {
+    const chosen = answer?.type === "multi" ? answer.choiceIndices : [];
+    const toggle = (i: number) => {
+      const next = chosen.includes(i) ? chosen.filter((c) => c !== i) : [...chosen, i];
+      onChange({ type: "multi", choiceIndices: next });
+    };
+    return (
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="text-sm font-medium">
+          {question.prompt}{" "}
+          <span className="font-normal text-muted-foreground">(select all that apply)</span>
+        </legend>
+        {question.choices.map((choice, i) => (
+          <label key={choice} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={chosen.includes(i)} onChange={() => toggle(i)} />
             {choice}
           </label>
         ))}
@@ -351,7 +411,7 @@ function PassedView({ plan }: { plan: PublicRoutePlan }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm font-medium text-primary">Nice work — you passed this station!</p>
+      <ResultBanner passed={true} results={results} />
       {stationFeedback && <p className="text-xs text-muted-foreground">{stationFeedback}</p>}
       {gradedStation && <QuestionResults questions={gradedStation.questions} results={results} />}
       {error && <p className="text-xs text-destructive">{error}</p>}
@@ -367,13 +427,21 @@ function PassedView({ plan }: { plan: PublicRoutePlan }) {
   );
 }
 
-function CompleteView() {
+function CompleteView({ plan }: { plan: PublicRoutePlan | null }) {
   const stationFeedback = useStudySession((s) => s.stationFeedback);
+  const results = useStudySession((s) => s.results);
+  const lastStation = plan?.stations[plan.stations.length - 1];
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto text-center">
       <p className="text-sm font-medium">You've finished this material!</p>
-      {stationFeedback && <p className="text-xs text-muted-foreground">{stationFeedback}</p>}
+      {stationFeedback && (
+        <div className="w-full text-left">
+          <ResultBanner passed={true} results={results} />
+          <p className="my-2 text-xs text-muted-foreground">{stationFeedback}</p>
+          {lastStation && <QuestionResults questions={lastStation.questions} results={results} />}
+        </div>
+      )}
       <button
         type="button"
         className={buttonClass}

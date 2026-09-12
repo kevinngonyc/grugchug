@@ -85,7 +85,14 @@ function persist(state: StudySessionState): void {
 function answerGivenText(station: PublicStation, questionId: string, answer: Answer): string {
   if (answer.type === "short") return answer.text;
   const question = station.questions.find((q) => q.id === questionId);
-  return question?.type === "mcq" ? (question.choices[answer.choiceIndex] ?? "") : "";
+  if (answer.type === "mcq") {
+    return question?.type === "mcq" ? (question.choices[answer.choiceIndex] ?? "") : "";
+  }
+  if (question?.type !== "multi") return "";
+  return answer.choiceIndices
+    .map((i) => question.choices[i])
+    .filter((choice): choice is string => choice !== undefined)
+    .join(", ");
 }
 
 export const useStudySession = create<StudySessionState>()((set, get) => ({
