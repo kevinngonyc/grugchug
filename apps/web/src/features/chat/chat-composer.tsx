@@ -27,14 +27,14 @@ export function ChatComposer({ onSend, disabled = false }: ChatComposerProps) {
 
   return (
     <form
-      className="flex items-end gap-2 border-t pt-3"
+      className="flex items-end gap-2 border-t border-border/40 pt-3"
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
       <textarea
-        className={`${inputClass} min-h-[2.5rem] resize-none`}
+        className={`${inputClass} min-h-[2.5rem] resize-none bg-background/60`}
         rows={1}
         maxLength={MESSAGE_MAX_LENGTH}
         placeholder="Message"

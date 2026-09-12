@@ -6,10 +6,10 @@ import { Dashboard } from "./routes/dashboard";
 import { Session } from "./routes/session";
 import { Settings } from "./routes/settings";
 
+// Chat is not a destination of its own: it rides along inside a session.
 const links = [
   { to: "/", label: "Dashboard" },
   { to: "/session", label: "Session" },
-  { to: "/chat", label: "Chat" },
   { to: "/settings", label: "Settings" },
 ];
 

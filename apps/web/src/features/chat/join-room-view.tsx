@@ -1,6 +1,7 @@
 import { DISPLAY_NAME_MAX_LENGTH } from "@grugchug/shared";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { writeActiveRoomId } from "./active-room";
 import { joinRoom } from "./api";
 import { identityFromMember, readIdentity, writeIdentity } from "./identity";
 import { buttonClass, cardClass, inputClass, labelClass } from "./ui";
@@ -27,7 +28,9 @@ export function JoinRoomView({ inviteCode }: JoinRoomViewProps) {
         userId: identity?.userId ?? null,
       });
       writeIdentity(identityFromMember(response.member));
-      void navigate(`/chat/${response.room.id}`, { replace: true });
+      // The room opens in the session overlay; there is no page of its own.
+      writeActiveRoomId(response.room.id);
+      void navigate("/session", { replace: true });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "could not join that room");
       setBusy(false);
