@@ -34,9 +34,10 @@ export function ChatOverlay() {
           `absolute right-4 bottom-20 z-10 ${open ? "flex" : "hidden"} ` +
           "w-[min(22rem,calc(100%-2rem))] flex-col " +
           "max-h-[min(32rem,calc(100%-7rem))] overflow-hidden rounded-2xl " +
-          // Glass: the scene stays visible through the panel, and the blur is
-          // what keeps text off a moving background legible. Bubbles stay solid.
-          "border border-border/40 bg-background/55 shadow-xl backdrop-blur-md"
+          // Near-opaque rather than frosted: text stays legible over the moving
+          // scene, and a backdrop blur over a canvas that changes every frame
+          // is re-computed every frame. Bubbles stay solid.
+          "border border-border/40 bg-background/90 shadow-xl"
         }
       >
         <ChatPanel />

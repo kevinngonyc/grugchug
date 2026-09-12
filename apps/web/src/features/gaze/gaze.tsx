@@ -58,6 +58,58 @@ const DISTANCE_REFERENCE_EMA_ALPHA = 0.02;
 const MIN_DISTANCE_FACTOR = 0.6;
 const MAX_DISTANCE_FACTOR = 1.8;
 
+// How often head pose is read, and so how often a face estimate is asked for.
+const SAMPLE_INTERVAL_MS = 200;
+
+// WebGazer is one camera and one face model per page, however many times
+// React mounts this component (StrictMode mounts twice in dev; changing a
+// threshold re-runs the effect). It is started once, shared, and ended only
+// once nobody is using it — ending it under a mount that has just started
+// would leave that mount reading a dead tracker.
+//
+// Its own loop runs face mesh plus a gaze regression on every animation
+// frame, on the main thread, beside three.js; this component reads head pose
+// five times a second and never uses the gaze prediction. So once started the
+// loop is paused — the camera keeps running — and `sample()` asks for one
+// fresh estimate per tick instead: about a twelfth of the inference.
+let trackerReady: Promise<void> | null = null;
+let trackerUsers = 0;
+
+function startTracker(): Promise<void> {
+  trackerReady ??= (async () => {
+    // Stored click data only ever feeds the gaze regression.
+    await webgazer.saveDataAcrossSessions(false);
+    await webgazer.begin();
+    webgazer.pause();
+    webgazer.removeMouseEventListeners();
+  })().catch((error: unknown) => {
+    // Let the next mount try again (a camera permission granted later).
+    trackerReady = null;
+    throw error;
+  });
+  return trackerReady;
+}
+
+function releaseTracker(): void {
+  trackerUsers -= 1;
+  const ready = trackerReady;
+  if (!ready) return;
+  void ready.then(
+    () => {
+      if (trackerUsers > 0 || trackerReady !== ready) return;
+      trackerReady = null;
+      webgazer.end();
+    },
+    () => {},
+  );
+}
+
+// Typed private, but it is the public method WebGazer's own loop calls: one
+// face-mesh estimate, which refreshes what getTracker().getPositions() returns.
+function estimateFace(): Promise<unknown> {
+  return (webgazer as unknown as { getEyeFeatures(): Promise<unknown> }).getEyeFeatures();
+}
+
 interface HeadPose {
   yaw: number;
   pitch: number;
@@ -159,9 +211,10 @@ export function Gaze({
       .showFaceFeedbackBox(debug)
       .showPredictionPoints(false);
 
-    webgazer.begin();
-
+    let disposed = false;
+    let ready = false;
     let interval: ReturnType<typeof setInterval> | null = null;
+    let estimating = false;
 
     const stopSampling = () => {
       if (interval !== null) {
@@ -170,7 +223,26 @@ export function Gaze({
       }
     };
 
-    const sample = () => {
+    const markAway = () => {
+      onFacingRef.current?.(false);
+      setLookingAway(true);
+    };
+
+    const sample = async () => {
+      // A slow estimate is skipped over rather than queued behind.
+      if (estimating) return;
+      estimating = true;
+      try {
+        // In debug WebGazer's own loop keeps running (it draws the preview
+        // overlay), so it is already estimating every frame.
+        if (!debug) await estimateFace();
+      } catch {
+        // A dropped frame reads as no face this tick.
+      } finally {
+        estimating = false;
+      }
+      if (disposed || document.hidden) return;
+
       const positions = webgazer.getTracker()?.getPositions() ?? null;
       const pose = positions ? computeHeadPose(positions) : null;
 
@@ -264,37 +336,44 @@ export function Gaze({
 
     const startSampling = () => {
       stopSampling();
-      interval = setInterval(sample, 200);
+      interval = setInterval(() => void sample(), SAMPLE_INTERVAL_MS);
     };
 
-    // Background tabs still ran face mesh before this — pause the tracker and
-    // the 200ms sample loop while hidden, and treat the learner as away.
+    // A hidden tab asks for no estimates at all, and the learner counts as
+    // away until they are back.
     const onVisibility = () => {
       if (document.hidden) {
         stopSampling();
-        webgazer.pause();
-        onFacingRef.current?.(false);
-        setLookingAway(true);
-      } else {
-        void webgazer.resume().then(() => {
-          if (!document.hidden) startSampling();
-        });
+        if (debug) webgazer.pause();
+        markAway();
+      } else if (ready) {
+        if (debug) void webgazer.resume();
+        startSampling();
       }
     };
 
-    if (document.hidden) {
-      webgazer.pause();
-      onFacingRef.current?.(false);
-      setLookingAway(true);
-    } else {
-      startSampling();
-    }
+    trackerUsers += 1;
+    startTracker().then(
+      () => {
+        if (disposed) return;
+        ready = true;
+        if (debug) void webgazer.resume();
+        if (document.hidden) markAway();
+        else startSampling();
+      },
+      () => {
+        // No camera (permission denied, none attached): WebGazer has already
+        // logged why, and without samples the learner reads as away.
+      },
+    );
+    if (document.hidden) markAway();
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      disposed = true;
       document.removeEventListener("visibilitychange", onVisibility);
       stopSampling();
-      webgazer.end();
+      releaseTracker();
     };
   }, [awayThresholdMs, yawThreshold, pitchThresholdDown, pitchThresholdUp, debug]);
 
