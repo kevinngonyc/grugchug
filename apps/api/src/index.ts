@@ -11,6 +11,7 @@ import {
   createPlan,
   evaluateProgress,
   getPlan,
+  regenerateStation,
   setTimer,
 } from "./routes/conductor";
 import { health } from "./routes/health";
@@ -43,6 +44,7 @@ const server = Bun.serve({
     "/api/conductor/plans/:id": { GET: getPlan },
     "/api/conductor/stations/:stationId/answer": { POST: answerStation },
     "/api/conductor/stations/:stationId/evaluate": { POST: evaluateProgress },
+    "/api/conductor/stations/:stationId/regenerate": { POST: regenerateStation },
     "/api/conductor/ask": { POST: askConductor },
     "/api/conductor/timer": { POST: setTimer },
     "/api/chat/room": { POST: myRoomRoute },

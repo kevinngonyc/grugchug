@@ -13,6 +13,7 @@ import { useEfficiency } from "@/features/efficiency";
 import { VOICE_LINES } from "@/features/speech";
 import { useWorld } from "@/features/world";
 
+const { ConductorApiError } = await import("./request");
 const realApi = await import("./api");
 const realHistory = await import("./history");
 
@@ -23,6 +24,7 @@ const apiMocks = {
   submitAnswer: mock(),
   evaluateProgress: mock(),
   askConductor: mock(),
+  regenerateStationQuestions: mock(),
 };
 
 const historyMocks = {
@@ -186,28 +188,10 @@ describe("studyAll", () => {
     expect(useMaterialLibrary.getState().items).toHaveLength(2);
   });
 
-  test("a saved sample route is regenerated instead of reused", async () => {
-    addTwoMaterials();
-    useMaterialLibrary.getState().setPlanId("sample");
-    apiMocks.getPlan.mockResolvedValue({ ...plan, usedFallback: true });
-    apiMocks.createPlan.mockResolvedValue(plan);
-    await useStudySession.getState().studyAll();
-    expect(apiMocks.createPlan).toHaveBeenCalledTimes(1);
-    expect(useStudySession.getState().plan).toBe(plan);
-  });
-
-  test("sample content is shown but never remembered for reuse", async () => {
-    addTwoMaterials();
-    apiMocks.createPlan.mockResolvedValue({ ...plan, usedFallback: true });
-    await useStudySession.getState().studyAll();
-    expect(useStudySession.getState().plan?.usedFallback).toBe(true);
-    expect(useMaterialLibrary.getState().planId).toBeNull();
-  });
-
   test("shows the server's reason when the route cannot be built", async () => {
-    const failure = Object.assign(
-      new Error("AI provider unavailable: GROQ_FLASH_MODEL is not set"),
-      { name: "ConductorApiError" },
+    const failure = new ConductorApiError(
+      "AI provider unavailable: GROQ_FLASH_MODEL is not set",
+      500,
     );
     apiMocks.createPlan.mockRejectedValue(failure);
     addTwoMaterials();
@@ -225,6 +209,16 @@ describe("studyAll", () => {
 
     expect(apiMocks.createPlan).not.toHaveBeenCalled();
     expect(useStudySession.getState().plan).toBeNull();
+  });
+
+  test("shows the actionable API failure instead of a generic route error", async () => {
+    apiMocks.createPlan.mockRejectedValue(
+      new ConductorApiError("The study server is unavailable.", 502),
+    );
+    addTwoMaterials();
+    await useStudySession.getState().studyAll();
+    expect(useStudySession.getState().error).toBe("The study server is unavailable.");
+    expect(useStudySession.getState().busy).toBe(false);
   });
 
   test("surfaces an error when the route cannot be built", async () => {
@@ -330,7 +324,7 @@ describe("startStudying", () => {
     // same startStudying path and must not replay the line or the POST.
     useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() - 1 });
     useStudySession.getState().tick();
-    useStudySession.getState().chooseAnswer();
+    void useStudySession.getState().chooseAnswer();
     useStudySession.getState().setAnswer("q1", { type: "mcq", choiceIndex: 1 });
     useStudySession.getState().setAnswer("q2", { type: "short", text: "because" });
     apiMocks.submitAnswer.mockResolvedValue({
@@ -396,6 +390,64 @@ describe("tick", () => {
     useStudySession.getState().tick();
 
     expect(useStudySession.getState().mode).toBe("counting");
+  });
+});
+
+describe("chooseAnswer", () => {
+  test("a fresh arrival goes straight to the existing questions, no regeneration", async () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "at-station", stationFeedback: null });
+
+    await useStudySession.getState().chooseAnswer();
+
+    expect(apiMocks.regenerateStationQuestions).not.toHaveBeenCalled();
+    expect(useStudySession.getState().mode).toBe("answering");
+    expect(useStudySession.getState().plan?.stations[0]?.questions).toEqual(
+      plan.stations[0]?.questions,
+    );
+  });
+
+  test("a retry after a failed attempt gets a fresh set of questions for the same station", async () => {
+    const freshQuestions = [
+      { id: "s1-q1", type: "mcq" as const, prompt: "New?", choices: ["a", "b"] },
+    ];
+    apiMocks.regenerateStationQuestions.mockResolvedValue({
+      ...plan.stations[0],
+      questions: freshQuestions,
+    });
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({
+      mode: "at-station",
+      stationFeedback: "Try again.",
+      results: { q1: { questionId: "q1", score: 0, passed: false, feedback: "Not quite." } },
+    });
+
+    await useStudySession.getState().chooseAnswer();
+
+    expect(apiMocks.regenerateStationQuestions).toHaveBeenCalledWith("s1", { planId: "plan-1" });
+    const s = useStudySession.getState();
+    expect(s.mode).toBe("answering");
+    expect(s.plan?.stations[0]?.questions).toEqual(freshQuestions);
+    expect(s.plan?.stations[1]?.questions).toEqual(plan.stations[1]?.questions);
+    expect(s.stationFeedback).toBeNull();
+    expect(s.results).toEqual({});
+  });
+
+  test("a regeneration failure surfaces the server's reason and stays at the station", async () => {
+    apiMocks.regenerateStationQuestions.mockRejectedValue(
+      new ConductorApiError("AI provider unavailable: GROQ_FLASH_MODEL is not set", 503),
+    );
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "at-station", stationFeedback: "Try again." });
+
+    await useStudySession.getState().chooseAnswer();
+
+    const s = useStudySession.getState();
+    expect(s.mode).toBe("at-station");
+    expect(s.busy).toBe(false);
+    expect(s.error).toBe("AI provider unavailable: GROQ_FLASH_MODEL is not set");
+    // The stale questions never get shown as the retry.
+    expect(s.plan?.stations[0]?.questions).toEqual(plan.stations[0]?.questions);
   });
 });
 

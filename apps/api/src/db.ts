@@ -29,8 +29,16 @@ export const SCHEMA: readonly string[] = [
      plan TEXT NOT NULL,
      created_at TEXT NOT NULL
    )`,
+  // Superseded by material_sets; kept so plans saved before it still find
+  // their files, and pruned with the same retention.
   `CREATE TABLE IF NOT EXISTS plan_materials (
      plan_id TEXT PRIMARY KEY,
+     materials TEXT NOT NULL,
+     created_at TEXT NOT NULL
+   )`,
+  // One copy of each uploaded set of files, keyed by the plan's materialHash.
+  `CREATE TABLE IF NOT EXISTS material_sets (
+     material_hash TEXT PRIMARY KEY,
      materials TEXT NOT NULL,
      created_at TEXT NOT NULL
    )`,

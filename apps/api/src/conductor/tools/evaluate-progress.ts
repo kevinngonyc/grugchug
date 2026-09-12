@@ -5,7 +5,7 @@
 // every question's outcome, never the source material, same minimal-context
 // principle as grade-answer. Flash tier; the harness decides whether to
 // escalate.
-import { PASS_THRESHOLD } from "@grugchug/shared";
+import { PASS_THRESHOLD, percentOf } from "@grugchug/shared";
 import { z } from "zod";
 import { CONFIDENCE_THRESHOLD, defineTool, type ToolSpec } from "../harness";
 
@@ -38,10 +38,6 @@ function formatResults(results: EvaluateProgressInput["results"]): string {
     .join("\n");
 }
 
-function percent(fraction: number): number {
-  return Math.round(fraction * 100);
-}
-
 export const evaluateProgressToolSpec: ToolSpec<EvaluateProgressInput, EvaluateProgressOutput> = {
   name: "evaluate-progress",
   inputSchema: evaluateProgressInputSchema,
@@ -58,7 +54,7 @@ export const evaluateProgressToolSpec: ToolSpec<EvaluateProgressInput, EvaluateP
 Here is every question they answered at this station and how it was graded:
 ${formatResults(input.results)}
 
-Their overall score is ${percent(input.meanScore)}% and the pass mark is ${percent(PASS_THRESHOLD)}%, so they have ${input.passed ? "passed and move on to the next station" : "not passed yet and will review this station before trying again"}.
+Their overall score is ${percentOf(input.meanScore)}% and the pass mark is ${percentOf(PASS_THRESHOLD)}%, so they have ${input.passed ? "passed and move on to the next station" : "not passed yet and will review this station before trying again"}.
 
 In one or two sentences addressed to the learner, say what they did well and what to review ${input.passed ? "before the next station builds on it" : "before they retry"}. Name specific topics from the questions rather than giving generic advice.
 

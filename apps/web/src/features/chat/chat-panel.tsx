@@ -66,7 +66,7 @@ export function RosterList({ members }: { members: readonly ChatPresenceMember[]
   return (
     <ul className="flex flex-col gap-1 pt-1">
       {members.map((member) => (
-        <li key={member.userId} className="flex items-center gap-2 text-xs">
+        <li key={member.connectionId} className="flex items-center gap-2 text-xs">
           <img
             src={member.avatar ? avatarUrl(member.avatar) : spriteForUserId(member.userId)}
             alt=""

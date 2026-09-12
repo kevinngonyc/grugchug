@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { EFFICIENCY_SCORE_MAX, EFFICIENCY_SCORE_MIN, EFFICIENCY_SCORE_NEUTRAL } from "@grugchug/shared";
+import {
+  EFFICIENCY_SCORE_MAX,
+  EFFICIENCY_SCORE_MIN,
+  EFFICIENCY_SCORE_NEUTRAL,
+} from "@grugchug/shared";
 import { ATTENTION_HALF_LIFE_MS } from "./attention";
 import {
   ATTENTION_SOURCE,
@@ -12,14 +16,12 @@ import {
 // Seeds full attention directly, bypassing foldAttention's neutral opening —
 // for tests where "eyes on the screen" is the setup, not the thing under test.
 function seedFullAttention(at: number): void {
-  useEfficiency
-    .getState()
-    .report(ATTENTION_SOURCE, 1, {
-      label: "Eyes on screen",
-      weight: ATTENTION_WEIGHT,
-      halfLifeMs: ATTENTION_STALE_HALF_LIFE_MS,
-      at,
-    });
+  useEfficiency.getState().report(ATTENTION_SOURCE, 1, {
+    label: "Eyes on screen",
+    weight: ATTENTION_WEIGHT,
+    halfLifeMs: ATTENTION_STALE_HALF_LIFE_MS,
+    at,
+  });
 }
 
 const NOW = 1_757_000_000_000;
@@ -71,7 +73,9 @@ test("re-reporting keeps the weight and half-life it was given", () => {
 
 test("ticking lets an old signal fade without anyone reporting", () => {
   seedFullAttention(NOW);
-  useEfficiency.getState().report("quiz", 0, { label: "Quiz", weight: 1, halfLifeMs: 60_000, at: NOW });
+  useEfficiency
+    .getState()
+    .report("quiz", 0, { label: "Quiz", weight: 1, halfLifeMs: 60_000, at: NOW });
   expect(useEfficiency.getState().score).toBeCloseTo(50, 6);
 
   useEfficiency.getState().tick(NOW + 7 * 60_000);
@@ -88,6 +92,26 @@ test("dropping a source removes it from the blend", () => {
 });
 
 describe("neutralize", () => {
+  test("does not bring back a signal that had already faded out", () => {
+    // A quiz from two hours ago has decayed to nothing. Pinning it to neutral
+    // with a fresh timestamp would give it its full weight back and cap eyes-
+    // on-screen below full marks for the next hour.
+    useEfficiency.getState().reset();
+    useEfficiency
+      .getState()
+      .report("quiz", 0.2, { label: "Quiz", weight: 0.5, halfLifeMs: 10 * 60_000, at: NOW });
+    const later = NOW + 2 * 60 * 60_000;
+    seedFullAttention(later);
+    expect(useEfficiency.getState().score).toBeCloseTo(100, 6);
+
+    useEfficiency.getState().neutralize(later);
+    expect(useEfficiency.getState().signals.quiz).toBeUndefined();
+
+    // Attention earns its way back up alone; nothing stale drags on it.
+    for (let s = 1; s <= 600; s++) useEfficiency.getState().reportAttention(true, later + s * 1000);
+    expect(useEfficiency.getState().score).toBeGreaterThan(99);
+  });
+
   test("puts the score at neutral, not the floor", () => {
     const store = useEfficiency.getState();
     store.reset();

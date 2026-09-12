@@ -28,6 +28,10 @@ export const askConductorToolSpec: ToolSpec<AskConductorInput, AskConductorOutpu
   name: "ask-conductor",
   inputSchema: askConductorInputSchema,
   outputSchema: askConductorOutputSchema,
+  // No two questions are alike and the history changes every turn, so a
+  // cache entry could never hit — and its key would hash every megabyte of
+  // the attached material on each ask.
+  cache: false,
   system:
     "You are the teaching assistant for this course, helping a learner while they work through a study route. You explain clearly and patiently, use examples when they help, and never make up facts the course material does not support. Respond with JSON only.",
   temperature: 0.4,

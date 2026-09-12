@@ -25,7 +25,7 @@ describe("sayLine", () => {
     w.setLocalTrainId("local");
     sayLine("passQuiz");
     expect(speechOf("local")?.text).toBe(VOICE_LINES.passQuiz.text);
-    expect(speechOf("local")?.audioUrl).toBe("/audio/pass_quiz1.mp3");
+    expect(speechOf("local")?.audioUrl).toBe("/audio/pass_quizcensored.mp3");
   });
 
   test("does nothing when there is no local train", () => {

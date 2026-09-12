@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { ChatPresenceMember, Journey } from "@grugchug/shared";
 import { render, screen } from "@testing-library/react";
 import { journeyLabel, RosterList, ridersLabel } from "./chat-panel";
@@ -57,7 +57,14 @@ describe("RosterList", () => {
     const { container } = render(
       <RosterList
         members={[
-          { connectionId: "conn-1", userId: "u1", displayName: "Ada", efficiency: 0.5, avatar: "cat", journey },
+          {
+            connectionId: "conn-1",
+            userId: "u1",
+            displayName: "Ada",
+            efficiency: 0.5,
+            avatar: "cat",
+            journey,
+          },
           { connectionId: "conn-2", userId: "c", displayName: "Bob", efficiency: 0.5 },
           { connectionId: "conn-3", userId: "a", displayName: "Cy", efficiency: 0.5 },
         ]}
@@ -72,5 +79,28 @@ describe("RosterList", () => {
     expect(images[0]?.getAttribute("src")).toBe("/characters/cat.png");
     expect(images[1]?.getAttribute("src")).toBe("/characters/poku.png");
     expect(images[2]?.getAttribute("src")).toBe("/characters/bonbon.png");
+  });
+
+  test("two tabs of one browser are two rows, without a duplicate-key warning", () => {
+    // The roster is one entry per socket, and every tab of a browser shares
+    // its stored userId — so rows have to be keyed by connection.
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { container } = render(
+        <RosterList
+          members={[
+            { connectionId: "conn-a", userId: "same", displayName: "Kevin", efficiency: 0.5 },
+            { connectionId: "conn-b", userId: "same", displayName: "Kevin", efficiency: 0.5 },
+          ]}
+        />,
+      );
+      expect(container.querySelectorAll("li")).toHaveLength(2);
+      const keyWarnings = errors.mock.calls.filter((args) =>
+        args.some((arg) => typeof arg === "string" && arg.includes("same key")),
+      );
+      expect(keyWarnings).toHaveLength(0);
+    } finally {
+      errors.mockRestore();
+    }
   });
 });

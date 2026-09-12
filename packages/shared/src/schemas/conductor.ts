@@ -86,8 +86,6 @@ export const routePlanSchema = z.object({
   id: z.string(),
   userId: z.string(),
   materialHash: z.string(),
-  // Sample content was used because a generation step failed. Absent on old plans.
-  usedFallback: z.boolean().optional(),
   totalEstimatedMinutes: z.number().positive(),
   stations: z.array(stationSchema).min(1).max(MAX_STATIONS),
 });
@@ -145,6 +143,15 @@ export const answerSubmissionSchema = z.object({
 
 export type AnswerSubmission = z.infer<typeof answerSubmissionSchema>;
 
+// Body of POST /api/conductor/stations/:stationId/regenerate: a fresh set of
+// questions for this station after a failed attempt, so retrying is an
+// actual second attempt rather than the same 8 questions from memory.
+export const regenerateStationRequestSchema = z.object({
+  planId: z.string().min(1),
+});
+
+export type RegenerateStationRequest = z.infer<typeof regenerateStationRequestSchema>;
+
 // Grading outcome for one question. score is 0..1.
 export const answerResultSchema = z.object({
   questionId: z.string(),
@@ -155,11 +162,15 @@ export const answerResultSchema = z.object({
 
 export type AnswerResult = z.infer<typeof answerResultSchema>;
 
+// The most of an earlier answer that is sent back as history. The TA's own
+// answers are not capped, so the web trims them to this before echoing them.
+export const MAX_ASK_ANSWER_CHARS = 8000;
+
 // One earlier exchange in the ask panel, sent back with the next question so
 // a follow-up ("and the second one?") has something to refer to.
 export const askTurnSchema = z.object({
   question: z.string().min(1).max(2000),
-  answer: z.string().max(8000),
+  answer: z.string().max(MAX_ASK_ANSWER_CHARS),
 });
 
 export type AskTurn = z.infer<typeof askTurnSchema>;
@@ -233,9 +244,30 @@ export const evaluateProgressRequestSchema = z.object({
 export type EvaluateProgressRequest = z.infer<typeof evaluateProgressRequestSchema>;
 
 // A station is passed when the mean of its questions' scores reaches this.
-// The API decides with it and the web labels the overall score with it, so
-// the verdict and the score on screen can never disagree.
+// The API decides with stationVerdict() and the web labels the overall score
+// with the same call, so the verdict and the score on screen never disagree.
 export const PASS_THRESHOLD = 0.7;
+
+/** A 0..1 fraction as the whole percent it is shown as. */
+export function percentOf(fraction: number): number {
+  return Math.round(fraction * 100);
+}
+
+/**
+ * The one verdict for a station's quiz. Decided on the whole percent the
+ * learner sees, not the raw mean: a mean of 0.695 reads "70%" on screen, and
+ * "70% overall (pass mark 70%) — not passed" would be a contradiction.
+ */
+export function stationVerdict(scores: readonly number[]): {
+  meanScore: number;
+  percent: number;
+  passed: boolean;
+} {
+  const meanScore =
+    scores.length === 0 ? 0 : scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const percent = percentOf(meanScore);
+  return { meanScore, percent, passed: percent >= percentOf(PASS_THRESHOLD) };
+}
 
 // Reply to POST /api/conductor/stations/:stationId/evaluate: can the learner
 // move on to the next station?

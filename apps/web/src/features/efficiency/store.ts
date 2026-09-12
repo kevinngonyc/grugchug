@@ -7,7 +7,7 @@ import type { EfficiencySignal } from "@grugchug/shared";
 import { EFFICIENCY_SCORE_MAX } from "@grugchug/shared";
 import { create } from "zustand";
 import { ATTENTION_HALF_LIFE_MS, foldAttention, NEUTRAL_ATTENTION } from "./attention";
-import { clamp01, scoreOrNeutral } from "./score";
+import { clamp01, effectiveWeight, scoreOrNeutral } from "./score";
 
 /** The source id the webcam reports under. */
 export const ATTENTION_SOURCE = "attention";
@@ -107,15 +107,19 @@ export const useEfficiency = create<EfficiencyState>()((set, get) => ({
   // metres up the line on credit, and nobody who was slacking is punished
   // for it either. From here it moves up or down like any other reading.
   //
-  // Every existing signal is pinned to neutral rather than forgotten: with no
-  // signals at all `recompute` already reads neutral, so the pinning only
-  // matters for a source still actively reporting (attention), which would
-  // otherwise blend its very next reading against the value it had before the
-  // regroup instead of starting level with everyone else.
+  // Every signal still counting is pinned to neutral rather than forgotten:
+  // with no signals at all `recompute` already reads neutral, so the pinning
+  // only matters for a source still actively reporting (attention), which
+  // would otherwise blend its very next reading against the value it had
+  // before the regroup instead of starting level with everyone else. One
+  // that had already faded out is dropped instead — the fresh timestamp would
+  // give it its full weight back and hold the score under full marks for
+  // another run of half-lives.
   neutralize: (at = Date.now()) =>
     set((s) => {
       const signals: Record<string, EfficiencySignal> = {};
       for (const [source, signal] of Object.entries(s.signals)) {
+        if (effectiveWeight(signal, at) <= 0) continue;
         signals[source] = { ...signal, value: NEUTRAL_ATTENTION, updatedAt: at };
       }
       return { signals, score: recompute(signals, at) };

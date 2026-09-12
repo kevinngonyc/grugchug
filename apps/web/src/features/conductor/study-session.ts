@@ -6,20 +6,29 @@
 //
 // Refresh starts a fresh sitting. Saved metadata is only used to close the
 // previous history record; it never restores a route or timer automatically.
-import type {
-  Answer,
-  AnswerResult,
-  ProgressResult,
-  PublicRoutePlan,
-  PublicStation,
+import {
+  type Answer,
+  type AnswerResult,
+  type ProgressResult,
+  type PublicRoutePlan,
+  type PublicStation,
+  stationVerdict,
 } from "@grugchug/shared";
 import { create } from "zustand";
 import { useEfficiency } from "@/features/efficiency";
 import { sayLine, sayText } from "@/features/speech";
 import { getUserId } from "@/lib/user-id";
-import { createPlan, evaluateProgress, getPlan, setTimer, submitAnswer } from "./api";
+import {
+  createPlan,
+  evaluateProgress,
+  getPlan,
+  regenerateStationQuestions,
+  setTimer,
+  submitAnswer,
+} from "./api";
 import { endHistory, recordHistory, startHistory } from "./history";
 import { useMaterialLibrary } from "./material-library";
+import { ConductorApiError } from "./request";
 import { clearSession, readSession, writeSession } from "./session-storage";
 import { useConductorUi } from "./store";
 
@@ -64,7 +73,7 @@ interface StudySessionState {
   startStudying: () => Promise<void>;
   tick: () => void;
   skipTimer: () => void;
-  chooseAnswer: () => void;
+  chooseAnswer: () => Promise<void>;
   chooseKeepStudying: () => Promise<void>;
   chooseBreak: () => Promise<void>;
   setAnswer: (questionId: string, answer: Answer) => void;
@@ -172,26 +181,26 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         plan = await getPlan(library.planId).catch(() => null);
       }
       if (revision !== sessionRevision) return;
-      if (!plan || plan.usedFallback) {
+      if (!plan) {
         plan = await createPlan({
           userId: getUserId(),
           materials: library.items.map((item) => item.material),
         });
         if (revision !== sessionRevision) return;
-        useMaterialLibrary.getState().setPlanId(plan.usedFallback ? null : plan.id);
+        useMaterialLibrary.getState().setPlanId(plan.id);
       }
       get().startSession(plan);
     } catch (error) {
       if (revision !== sessionRevision) return;
       // The API says why ("AI provider unavailable: GROQ_FLASH_MODEL is not
-      // set"); a network failure has nothing better than the generic line.
-      // Matched by name, not instanceof, so this module needs only ./api's
-      // functions.
-      const reason =
-        error instanceof Error && error.name === "ConductorApiError" ? error.message : null;
+      // set") and the transport explains connectivity failures; anything
+      // else gets the generic line.
       set({
         busy: false,
-        error: reason ?? "Could not build a route from your materials. Try again.",
+        error:
+          error instanceof ConductorApiError
+            ? error.message
+            : "Could not build a route from your materials. Try again.",
       });
     }
   },
@@ -297,9 +306,48 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     get().tick();
   },
 
-  chooseAnswer: () => {
-    set({ mode: "answering", answers: {}, results: {}, stationFeedback: null });
-    persist(get());
+  // A fresh arrival goes straight to the station's existing questions. A
+  // retry — stationFeedback is only set right after a failed grading — gets
+  // a newly generated set for the same scope first: reusing the identical 8
+  // questions would let the learner pass by memorizing answers rather than
+  // by understanding the material.
+  chooseAnswer: async () => {
+    const revision = sessionRevision;
+    const state = get();
+    const isRetry = state.stationFeedback !== null;
+    if (!isRetry) {
+      set({ mode: "answering", answers: {}, results: {}, stationFeedback: null });
+      persist(get());
+      return;
+    }
+
+    const station = currentStation(state);
+    if (!state.plan || !station) return;
+    set({ busy: true, error: null });
+    try {
+      const freshStation = await regenerateStationQuestions(station.id, { planId: state.plan.id });
+      if (revision !== sessionRevision) return;
+      const stations = [...state.plan.stations];
+      stations[state.stationIndex] = freshStation;
+      set({
+        plan: { ...state.plan, stations },
+        mode: "answering",
+        answers: {},
+        results: {},
+        stationFeedback: null,
+        busy: false,
+      });
+      persist(get());
+    } catch (error) {
+      if (revision !== sessionRevision) return;
+      set({
+        busy: false,
+        error:
+          error instanceof ConductorApiError
+            ? error.message
+            : "Could not prepare new questions. Try again.",
+      });
+    }
   },
 
   chooseKeepStudying: async () => {
@@ -404,8 +452,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       return;
     }
 
-    const scores = station.questions.map((q) => results[q.id]?.score ?? 0);
-    const meanScore = scores.reduce((sum, s) => sum + s, 0) / Math.max(1, scores.length);
+    const { meanScore } = stationVerdict(station.questions.map((q) => results[q.id]?.score ?? 0));
     useEfficiency.getState().report(QUIZ_SOURCE, meanScore, {
       label: "Quiz",
       weight: QUIZ_WEIGHT,
