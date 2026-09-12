@@ -33,6 +33,7 @@ All from the repo root.
 - `bun run lint` — `biome check .`
 - `bun run fmt` — `biome check --write .`
 - `bunx shadcn@latest add <component>` — run inside `apps/web`
+- `/session?dev` in the browser — dev panel to drive trains by hand
 
 ## Conventions
 
@@ -50,3 +51,9 @@ All from the repo root.
   no MongoDB, no webcam.
 - `.llm/` is the single source of agent context. Root `AGENTS.md` is a symlink
   into it and root `CLAUDE.md` imports it. Edit the files here, not the root ones.
+- `features/world` never imports three.js. `features/scene` never writes the
+  store. Per-frame animation state lives in refs, not React state.
+- Scene numbers live in `features/scene/constants.ts`. Tune there, not inline.
+- Character sprites are 500x500 PNGs with transparent margins in
+  `apps/web/public/characters/`. Every sprite maps whole onto the same square
+  plane, so how much canvas a drawing fills is how big it is in the world.
