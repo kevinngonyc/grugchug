@@ -30,7 +30,7 @@ export function SessionDevPanel() {
       id,
       owner: {
         name: FRIEND_NAMES[liveTrainCount % FRIEND_NAMES.length] ?? "Friend",
-        spriteUrl: "/characters/default.svg",
+        spriteUrl: "/characters/bonbon.png",
       },
       phase: "running",
       efficiency: 0.3 + Math.random() * 0.6,

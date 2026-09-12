@@ -2,6 +2,8 @@ import { Clone, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { type RefObject, useEffect, useRef } from "react";
 import type { Group, Object3D } from "three";
+import { useWorld } from "@/features/world";
+import { Character } from "./character";
 import { CARRIAGE_GAP, KIT_ROTATION_Y, TRAIN_Y, WHEEL_RADIUS } from "./constants";
 import { MODELS } from "./models";
 import type { LaneMotion } from "./motion";
@@ -12,7 +14,8 @@ type TrainProps = { trainId: string; motion: RefObject<LaneMotion> };
 // Locomotive at the lane origin, one carriage behind it. Faces +x. Wheel
 // nodes in the Kenney models are named "wheel" or "wheels-*"; they spin about
 // their local x, the axle.
-export function Train({ motion }: TrainProps) {
+export function Train({ trainId, motion }: TrainProps) {
+  const spriteUrl = useWorld((s) => s.trains[trainId]?.owner.spriteUrl);
   const locomotive = useGLTF(MODELS.locomotive);
   const carriage = useGLTF(MODELS.carriage);
   const root = useRef<Group>(null);
@@ -40,6 +43,7 @@ export function Train({ motion }: TrainProps) {
         <Clone object={carriage.scene} />
       </group>
       <Smoke motion={motion} />
+      {spriteUrl ? <Character url={spriteUrl} /> : null}
     </group>
   );
 }

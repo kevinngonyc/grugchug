@@ -45,9 +45,11 @@ export const SMOKE_PUFFS = 14;
 export const SMOKE_LIFE = 1.6; // seconds
 export const CHIMNEY_OFFSET: [number, number, number] = [0.9, LOCOMOTIVE_HEIGHT, 0];
 
-// Character sprite rides on the back of the locomotive
-export const CHARACTER_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIGHT + 0.75, 0];
-export const CHARACTER_SIZE: [number, number] = [1, 1.4];
+// Character sprite rides on the back of the locomotive. Every sprite shares a
+// square canvas and is mapped whole onto a square plane, so how much of the
+// canvas a drawing fills is how big that character is in the world.
+export const CHARACTER_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIGHT + 0.4, 0];
+export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
 
 // Camera
 export const CAMERA_POSITION: [number, number, number] = [0, 4, 22];

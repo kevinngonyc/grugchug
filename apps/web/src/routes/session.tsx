@@ -14,7 +14,7 @@ export function Session() {
     const w = useWorld.getState();
     w.addTrain({
       id: LOCAL_TRAIN_ID,
-      owner: { name: "You", spriteUrl: "/characters/default.svg" },
+      owner: { name: "You", spriteUrl: "/characters/poku.png" },
       phase: "stopped",
       efficiency: 0.7,
       lane: 0,
