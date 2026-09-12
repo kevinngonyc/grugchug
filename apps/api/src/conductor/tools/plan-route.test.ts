@@ -30,6 +30,20 @@ describe("planRouteToolSpec", () => {
     expect(result.fellBackToFixture).toBe(false);
   });
 
+  test("accepts a request with no availableMinutes at all", async () => {
+    const stations = [{ id: "a", index: 0, title: "Intro", scope: "Basics", estimatedMinutes: 5 }];
+    const resolve = () => fakeProvider(JSON.stringify({ stations }));
+
+    const result = await runTool(
+      planRouteToolSpec,
+      { material: { kind: "text", text: "some notes" } },
+      resolve,
+    );
+
+    expect(result.output.stations).toEqual(stations);
+    expect(result.fellBackToFixture).toBe(false);
+  });
+
   test("falls back to the fixture stations, without questions, when the model never produces valid JSON", async () => {
     const resolve = () => fakeProvider("not json");
 

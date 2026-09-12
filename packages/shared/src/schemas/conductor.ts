@@ -84,10 +84,12 @@ export const materialSchema = z.discriminatedUnion("kind", [
 
 export type Material = z.infer<typeof materialSchema>;
 
-// Body of POST /api/conductor/plans.
+// Body of POST /api/conductor/plans. availableMinutes is optional — timing
+// is the LLM's call (plan-route sizes stations from the material itself
+// when it's omitted), not something the learner has to guess up front.
 export const createPlanRequestSchema = z.object({
   userId: z.string().min(1),
-  availableMinutes: z.number().int().min(1).max(600),
+  availableMinutes: z.number().int().min(1).max(600).optional(),
   material: materialSchema,
 });
 
