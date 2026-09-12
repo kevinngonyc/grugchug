@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 import { reportJourney } from "@/features/chat";
 import { journeyForSession, useStudySession } from "@/features/conductor";
-import { useProfile } from "@/features/profile";
-
-const DEFAULT_AVATAR = "poku" as const;
+import { DEFAULT_AVATAR, useProfile } from "@/features/profile";
 
 // The room should see where you are and what you look like. Session is the
 // bridge: it reads the study session and the profile, and hands chat a status.

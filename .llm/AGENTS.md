@@ -80,8 +80,9 @@ All from the repo root.
   driver decides when a line ends. Cover these rules in session tests.
 - All rails and scenery scroll with the local train. Companion trains move
   relative to that shared world; do not give their tracks independent scroll.
-  Stations belong to the local lane. `regroup()` resets relative motion when
-  new participants arrive.
+  Every lane spawns its own stations: a companion's motion is registered so
+  its lane can place a platform where it halts. `regroup()` resets relative
+  motion when new participants arrive.
 - Character sprites are 500x500 PNGs with transparent margins in
   `apps/web/public/characters/`. Every sprite maps whole onto the same square
   plane, so how much canvas a drawing fills is how big it is in the world.

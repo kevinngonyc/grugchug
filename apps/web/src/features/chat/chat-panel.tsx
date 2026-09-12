@@ -9,6 +9,7 @@
 import type { ChatPresenceMember, Journey } from "@grugchug/shared";
 import { useCallback } from "react";
 import { avatarUrl } from "@/features/profile";
+import { spriteForUserId } from "@/lib/sprite-for-user";
 import { ChatComposer } from "./chat-composer";
 import { InvitePanel } from "./invite-panel";
 import { MessageList } from "./message-list";
@@ -16,15 +17,6 @@ import { NameField } from "./name-field";
 import { useRoster } from "./roster";
 import { useChatRoom } from "./use-chat-room";
 import { useMyRoom } from "./use-my-room";
-
-// Riders who never picked an avatar (or whose profile has not loaded yet on
-// this connection) get the same placeholder study-session gives one: a plain
-// silhouette, not another rider's face. Not `@/features/profile`'s default,
-// and not `@/features/session` — session already imports chat, and importing
-// it back here would be a cycle.
-function spriteFor(_userId: string): string {
-  return "/characters/default.svg";
-}
 
 const statusLabel = {
   connecting: "Connecting…",
@@ -74,7 +66,7 @@ export function RosterList({ members }: { members: readonly ChatPresenceMember[]
       {members.map((member) => (
         <li key={member.userId} className="flex items-center gap-2 text-xs">
           <img
-            src={member.avatar ? avatarUrl(member.avatar) : spriteFor(member.userId)}
+            src={member.avatar ? avatarUrl(member.avatar) : spriteForUserId(member.userId)}
             alt=""
             className="size-6 rounded-full bg-background/60"
           />

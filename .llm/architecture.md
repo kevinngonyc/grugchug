@@ -33,6 +33,7 @@ through `src/features/<feature>/index.ts`.
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
 | `src/features/session/` | Drives local efficiency, pushes focus and journey status into chat, and maps the chat roster to companion trains that stop at their own stations |
+| `src/features/conductor/` | Study session: upload materials, route of stations, timers, answering and grading; drives the local train's phase (`applyStudyPhase`), narrates through speech, reports quiz means to efficiency, records history, and renders `SessionHistory` on the Dashboard |
 | `src/features/world/` | Zustand train intent: owners, phases, efficiency, speech, local train ID, and regroup count. No three.js |
 | `src/features/profile/` | Loads/saves the browser's profile, defines the avatar catalog, and renders the Settings picker |
 | `src/features/speech/` | Voice-line registry, `sayLine` for events the world does not see and `sayText` for an unrecorded line, playback/fallback timing, and clearing finished utterances. Narrating the local train's journey belongs to the study session, not this feature |
@@ -111,10 +112,10 @@ their user ID.
 ## Scene and voice playback
 
 `TrainWorld` owns the canvas and shared local travel. Every lane's rails,
-scenery, and platforms use that travel. Only the local lane creates stations.
-Each companion train has its own speed and moves along its track relative to
-the local train; its wheels and smoke use that speed. Whole multi-axle bogies
-stay fixed, while individual wheel meshes spin.
+scenery, and platforms use that travel. Every lane creates stations for its
+own train. Each companion train has its own speed and moves along its track
+relative to the local train; its wheels and smoke use that speed. Whole
+multi-axle bogies stay fixed, while individual wheel meshes spin.
 
 Relative gaps close gradually when speeds converge. New roster participants
 call `regroup()`, resetting speed and lining companions up again. A companion

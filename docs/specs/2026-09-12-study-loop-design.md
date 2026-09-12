@@ -150,16 +150,15 @@ Pure `journeyLabel` lives beside `ridersLabel`.
 ## Deviations (recorded after implementation)
 
 - Friends' stations (Task 7c): a companion train's motion is registered by
-  an effect inside `Train`, a child of `Lane`. If a friend's train first
-  mounts already `stopped` or `finished` — rather than transitioning into
-  that phase after joining — `Lane`'s station effect can run on the same
-  commit while `getMotion(trainId)` is still `undefined`, so it returns
-  without placing a platform or setting `stopTarget`. The companion then
-  cruises through where its platform should be. Because the effect's
-  dependency is `[phase, ...]`, this self-heals on that companion's *next*
-  phase change, once `getMotion` is populated — so a friend who joins already
-  at a station only shows a platform after their journey changes at least
-  once more. This was flagged as a known, scoped edge case rather than fixed.
+  an effect inside `Train`, a child of `Lane`, so the registry is already
+  populated by the time `Lane`'s station effect runs on the same commit —
+  child effects run before parent effects. The real issue was that the
+  registered motion was unlevelled (fresh `createMotion()`: scroll 0, speed
+  0) until its first frame, so a friend's train that mounts already
+  `stopped` or `finished` had its platform placed at world x 0 and stayed
+  pinned there. Fixed by levelling the motion with the lane inside the
+  register effect itself, before handing it to the registry, rather than
+  waiting for the first `useFrame`.
 - `features/conductor/history.ts` does not log failures (no `console.error`
   anywhere in the module): `startHistory`, `recordHistory`, and `endHistory`
   fail silently so a missing API never blocks or interrupts a study session.

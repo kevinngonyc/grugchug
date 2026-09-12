@@ -54,6 +54,18 @@ describe("study store", () => {
     expect(ended?.endedAt).not.toBeNull();
   });
 
+  test("a session already ended cannot be ended again", async () => {
+    const db = openDatabase(":memory:");
+    const session = await startStudySession(start, db);
+    const first = await endStudySession(session.id, "completed", db);
+    expect(first?.outcome).toBe("completed");
+    const second = await endStudySession(session.id, "quit", db);
+    expect(second).toBeNull();
+    // The second attempt must not have overwritten the first outcome.
+    const [summary] = await listStudySessions("u1", db);
+    expect(summary?.outcome).toBe("completed");
+  });
+
   test("unknown sessions are null", async () => {
     const db = openDatabase(":memory:");
     expect(

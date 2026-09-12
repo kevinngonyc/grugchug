@@ -10,7 +10,7 @@
 //
 // Each handler takes its real dependencies (tool runners, store functions)
 // as a defaulted parameter, so tests can inject fakes and stay offline —
-// no MongoDB, no LLM calls — while production code (index.ts) gets the
+// no SQLite, no LLM calls — while production code (index.ts) gets the
 // real ones for free.
 import {
   type AnswerResult,

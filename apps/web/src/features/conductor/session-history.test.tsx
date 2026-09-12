@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import type { StudySessionSummary } from "@grugchug/shared";
 import { render, screen } from "@testing-library/react";
 import { SessionHistory } from "./session-history";
@@ -30,4 +30,25 @@ test("says there are no sessions yet when the list is empty", async () => {
   expect(
     await screen.findByText("No sessions yet. Open the conductor in a session to start one."),
   ).toBeTruthy();
+});
+
+const realFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+test("fetches history exactly once with no load prop, even after it resolves", async () => {
+  let calls = 0;
+  globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => {
+    calls += 1;
+    return new Response("[]", { status: 200 });
+  }) as typeof fetch;
+
+  render(<SessionHistory />);
+
+  expect(
+    await screen.findByText("No sessions yet. Open the conductor in a session to start one."),
+  ).toBeTruthy();
+  expect(calls).toBe(1);
 });

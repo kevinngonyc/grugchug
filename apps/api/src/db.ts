@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 // One SQLite file for everything the API keeps. Bun ships the driver, so there
 // is nothing to install or run alongside. SQLITE_PATH overrides the location;
 // tests pass ":memory:".
+//
+// Resolves to apps/api/data/grugchug.sqlite from both src/ and dist/, since
+// both are one directory deep from apps/api/.
 export const DEFAULT_SQLITE_PATH = fileURLToPath(
   new URL("../data/grugchug.sqlite", import.meta.url),
 );
@@ -81,10 +84,18 @@ export function openDatabase(path: string): Database {
   return db;
 }
 
+// Bun loads an unset-but-present `SQLITE_PATH=` from .env as "", which would
+// otherwise pass `??` and open SQLite's private temporary database — wiped on
+// every process restart. Treat empty and whitespace-only as unset too.
+export function resolveSqlitePath(env: string | undefined): string {
+  const configured = env?.trim();
+  return configured ? configured : DEFAULT_SQLITE_PATH;
+}
+
 let shared: Database | undefined;
 
 // The process-wide database. Opened on first use so tests never touch disk.
 export function getDatabase(): Database {
-  if (!shared) shared = openDatabase(process.env.SQLITE_PATH ?? DEFAULT_SQLITE_PATH);
+  if (!shared) shared = openDatabase(resolveSqlitePath(process.env.SQLITE_PATH));
   return shared;
 }

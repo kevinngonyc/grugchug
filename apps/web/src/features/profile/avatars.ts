@@ -30,6 +30,9 @@ export const AVATARS: Avatar[] = avatarIdSchema.options.map((id) => ({
 // What a fresh browser gets before it picks anything.
 export const DEFAULT_PROFILE: UserProfile = { name: "You", avatar: "poku" };
 
+// The avatar a rider wears until their profile says otherwise.
+export const DEFAULT_AVATAR: AvatarId = DEFAULT_PROFILE.avatar;
+
 // The train owner a profile turns into. Null (not loaded, or API down) rides
 // with the default so a session is never blocked on the network.
 export function profileOwner(user: User | null): TrainOwner {

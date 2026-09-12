@@ -3,7 +3,7 @@ import { journeySchema } from "./journey";
 import { avatarIdSchema } from "./user";
 
 // Chat: one room at a time, the people connected to it, and what they say.
-// Everything here crosses the HTTP or WebSocket boundary, or lands in MongoDB.
+// Everything here crosses the HTTP or WebSocket boundary, or is stored.
 //
 // A browser is in exactly one room: the last one it joined. The server hands
 // that room back on request and creates one the first time, so there is no

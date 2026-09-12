@@ -1,5 +1,5 @@
 // Data contract shared by apps/web and apps/api. Every shape that crosses the
-// HTTP boundary or lands in MongoDB is defined here as a zod schema.
+// HTTP boundary or is stored is defined here as a zod schema.
 
 export * from "./schemas/chat";
 export * from "./schemas/conductor";

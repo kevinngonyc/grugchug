@@ -61,11 +61,18 @@ export function Train({ trainId, motion }: TrainProps) {
   const gap = useRef(0);
 
   // Lanes read a companion's motion from the registry to place its stations.
+  // Level it with the lane before handing it over: Lane's own station effect
+  // runs on this same commit, and for a train that mounts already
+  // stopped/finished it would otherwise read the fresh, unlevelled motion
+  // (scroll 0, speed 0) and plant the station at the world origin.
   useEffect(() => {
     if (isLocal) return;
+    own.current.scroll = motion.current.scroll;
+    own.current.speed = motion.current.speed;
+    synced.current = true;
     registerMotion(trainId, own.current);
     return () => unregisterMotion(trainId);
-  }, [trainId, isLocal]);
+  }, [trainId, isLocal, motion]);
 
   // A new arrival is a fresh start: everyone stops and everyone is level
   // again, rather than the newcomer meeting a line that is already strung out

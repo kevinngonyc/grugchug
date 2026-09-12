@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { openDatabase, SCHEMA } from "./db";
+import { DEFAULT_SQLITE_PATH, openDatabase, resolveSqlitePath, SCHEMA } from "./db";
 
 const TABLES = [
   "users",
@@ -38,5 +38,17 @@ describe("openDatabase", () => {
       ),
     ).toThrow();
     db.close();
+  });
+});
+
+describe("resolveSqlitePath", () => {
+  test("treats undefined, empty, and whitespace-only as unset", () => {
+    expect(resolveSqlitePath(undefined)).toBe(DEFAULT_SQLITE_PATH);
+    expect(resolveSqlitePath("")).toBe(DEFAULT_SQLITE_PATH);
+    expect(resolveSqlitePath("  ")).toBe(DEFAULT_SQLITE_PATH);
+  });
+
+  test("returns the trimmed configured path otherwise", () => {
+    expect(resolveSqlitePath("/tmp/x.sqlite")).toBe("/tmp/x.sqlite");
   });
 });

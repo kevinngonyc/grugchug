@@ -2,11 +2,19 @@
 // study-session.ts (which imports both) is loaded, so nothing here touches
 // the network. The world store and efficiency store are real — same pattern
 // as features/session/use-party-trains.test.ts — since applyStudyPhase's and
-// report's actual effects are exactly what these tests check.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+// report's actual effects are exactly what these tests check. The real
+// modules are captured up front and restored in afterAll: mock.module patches
+// the module registry for the whole process, not just this file, and other
+// test files (session-history.test.tsx, dashboard.test.tsx) import the real
+// ./history (see features/session/use-journey-link.test.ts for the same
+// restore pattern).
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { useEfficiency } from "@/features/efficiency";
 import { VOICE_LINES } from "@/features/speech";
 import { useWorld } from "@/features/world";
+
+const realApi = await import("./api");
+const realHistory = await import("./history");
 
 const apiMocks = {
   createPlan: mock(),
@@ -31,6 +39,11 @@ const { useStudySession } = await import("./study-session");
 const { useConductorUi } = await import("./store");
 const { useMaterialLibrary } = await import("./material-library");
 const { applyStudyPhase } = await import("./study-drive");
+
+afterAll(() => {
+  mock.module("./api", () => realApi);
+  mock.module("./history", () => realHistory);
+});
 
 const plan = {
   id: "plan-1",
@@ -63,6 +76,11 @@ const plan = {
 function speechOf() {
   return useWorld.getState().trains.local?.speech;
 }
+
+// Lets every already-resolved microtask run before a pending-promise
+// assertion, without depending on how many `await`s a mocked resolution
+// takes to settle.
+const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   for (const m of Object.values(apiMocks)) m.mockReset();
@@ -220,6 +238,34 @@ describe("startStudying", () => {
     await useStudySession.getState().startStudying();
 
     expect(historyMocks.startHistory).not.toHaveBeenCalled();
+    expect(useStudySession.getState().historyId).toBe("h1");
+  });
+
+  test("persists departed before the history POST resolves, so a reload cannot replay it", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Go" });
+    let resolveStartHistory: (id: string | null) => void = () => {};
+    historyMocks.startHistory.mockImplementation(
+      () =>
+        new Promise<string | null>((resolve) => {
+          resolveStartHistory = resolve;
+        }),
+    );
+    useStudySession.getState().startSession(plan);
+
+    const promise = useStudySession.getState().startStudying();
+
+    // The mode change and `departed: true` are committed synchronously once
+    // setTimer resolves, before startHistory's promise ever settles. Flush
+    // with a macrotask so every already-resolved microtask (setTimer's
+    // continuation included) has run first.
+    await flush();
+    expect(useStudySession.getState().mode).toBe("counting");
+    expect(useStudySession.getState().departed).toBe(true);
+    expect(useStudySession.getState().historyId).toBeNull();
+
+    resolveStartHistory("h1");
+    await promise;
+
     expect(useStudySession.getState().historyId).toBe("h1");
   });
 

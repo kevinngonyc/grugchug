@@ -10,8 +10,13 @@ function minutesBetween(a: string, b: string | null): number | null {
   return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60_000));
 }
 
+// Hoisted so the default is a stable reference across renders. A fresh arrow
+// function as the default parameter would mint a new `load` on every render,
+// which the effect below depends on, re-running the fetch every time.
+const defaultLoad = () => fetchHistory(getUserId());
+
 // Your recent runs through a route, newest first. `load` is injectable for tests.
-export function SessionHistory({ load = () => fetchHistory(getUserId()) }: Props) {
+export function SessionHistory({ load = defaultLoad }: Props) {
   const [sessions, setSessions] = useState<StudySessionSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
 

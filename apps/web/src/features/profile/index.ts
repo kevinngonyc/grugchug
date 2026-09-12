@@ -3,5 +3,5 @@
 // train. Owns the avatar catalog and the picker UI.
 
 export { AvatarPicker } from "./avatar-picker";
-export { AVATARS, avatarUrl, profileOwner } from "./avatars";
+export { AVATARS, avatarUrl, DEFAULT_AVATAR, profileOwner } from "./avatars";
 export { type ProfileState, useProfile } from "./store";

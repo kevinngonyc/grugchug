@@ -186,22 +186,28 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         stationId: station.id,
         reason: "study",
       });
+      // `departed` is persisted immediately, in the same set as the mode
+      // change, rather than after the history POST below: a reload during
+      // that POST must not find `departed: false` and replay the
+      // all-aboard line or open a second history record.
       set({
         mode: "counting",
         timerEndsAt: Date.now() + minutes * 60_000,
         timerMessage: message,
         lastStretchMinutes: minutes,
         busy: false,
+        departed: true,
       });
       persist(get());
       useConductorUi.getState().closePanel();
 
       // A fresh route departs with the all-aboard line and opens its history
       // record; a departure after a passed station stays quiet, the pass line
-      // is still playing. The timer and the panel are already committed above,
-      // so a slow (or failing) history POST here cannot hold up the UI, and
-      // `departed` flips regardless of whether the POST returned an id — a
-      // failed start must never be replayed on the next station.
+      // is still playing. `state.departed` is the pre-call snapshot, so this
+      // still gates on whether this is the first departure. The timer and the
+      // panel are already committed above, so a slow (or failing) history
+      // POST here cannot hold up the UI; a failed start leaves `historyId`
+      // null but `departed` is already true and stays true.
       if (!state.departed) {
         sayLine("startSession");
         const historyId = await startHistory({
@@ -209,7 +215,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
           planId: state.plan.id,
           stationTotal: state.plan.stations.length,
         });
-        set({ historyId, departed: true });
+        set({ historyId });
         persist(get());
       }
     } catch {

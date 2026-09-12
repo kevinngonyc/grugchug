@@ -109,7 +109,8 @@ export async function endStudySession(
 ): Promise<StudySession | null> {
   const row = db
     .query<SessionRow, [string, string, string]>(
-      `UPDATE study_sessions SET ended_at = ?, outcome = ? WHERE id = ? RETURNING ${SESSION_COLUMNS}`,
+      `UPDATE study_sessions SET ended_at = ?, outcome = ?
+       WHERE id = ? AND ended_at IS NULL RETURNING ${SESSION_COLUMNS}`,
     )
     .get(new Date().toISOString(), outcome, sessionId);
   return row ? toSession(row) : null;

@@ -6,6 +6,7 @@
 // exactly what the roster is.
 import type { ChatPresenceMember, Journey, TrainPhase, TrainState } from "@grugchug/shared";
 import { avatarUrl } from "@/features/profile";
+import { spriteForUserId } from "@/lib/sprite-for-user";
 
 /** Your own train is `local` and rides lane 0; everyone else is prefixed. */
 export const PARTY_TRAIN_PREFIX = "party:";
@@ -17,20 +18,10 @@ export const PARTY_TRAIN_PREFIX = "party:";
  */
 export const MAX_PARTY_TRAINS = 4;
 
-// Every rider needs a face. Sprites are assigned from the userId rather than
-// handed out in arrival order, so you look the same on your friend's screen as
-// you do on your own.
-export const PARTY_SPRITES = [
-  "/characters/poku.png",
-  "/characters/bonbon.png",
-  "/characters/default.svg",
-] as const;
-
-export function spriteForUserId(userId: string): string {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) % 0x7fffffff;
-  return PARTY_SPRITES[hash % PARTY_SPRITES.length] ?? PARTY_SPRITES[0];
-}
+// Re-exported so existing imports of `spriteForUserId` from this module (and
+// from `features/session`) keep working; chat's roster shares this same
+// implementation via `@/lib/sprite-for-user` so the two never disagree.
+export { spriteForUserId };
 
 /**
  * Who in this roster was not in the last one, you excepted. Arrivals are what
