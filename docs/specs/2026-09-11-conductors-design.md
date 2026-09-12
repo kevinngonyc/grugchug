@@ -193,3 +193,38 @@ carries.
 - The agent transport that will eventually call `say`. Agents reach world
   commands through the API in their own spec.
 - The user's chatbox for talking to their own agent.
+
+## Deviations (recorded after implementation)
+
+- A clip that errors or whose `play()` rejects falls back to the text-length
+  timer instead of clearing immediately. The player table above said
+  "clear"; the behaviour section's fallback rule is what shipped, so a broken
+  URL never makes a line vanish before it can be read.
+- `stop()` clears the speech it interrupts. Without this, leaving the session
+  page mid-line and coming back would replay the stale line with a fresh
+  player.
+- `AvatarPicker` is presentational (`selected`, `onSelect`, `disabled`); the
+  Settings page owns the store. Keeps the picker testable without fetch.
+- API handlers take `(id, req)`; `index.ts` unpacks `req.params.id`. Route
+  tests then need no `BunRequest`.
+- `setAvatar` failure sets `status: "error"` but keeps the last loaded user,
+  so the session still rides with the last known avatar.
+- The conductor is not the picked avatar. While this spec was being written,
+  teammates put a fixed `conductor.png` on every locomotive and moved the
+  owner's sprite onto the carriage (commit `8c3a1e6`). The conductor is the
+  agent's face and is the sprite that talks and bobs; the picked avatar is
+  the passenger. Flipping that is one prop move in `train.tsx`.
+- The browser user id lives in `apps/web/src/lib/user-id.ts`, not in
+  `features/profile`, because chat needs the same id and features do not
+  import each other. Chat sends it as the caller id on a first create or
+  join; the server keeps a caller-supplied id.
+- Settings labels the picker "Your character", since the pick is the
+  passenger, not the conductor.
+- Voice lines shipped after all: `features/speech/lines.ts` registers three
+  clips, and a departure announcer says the start-of-session line when the
+  local train appears running or goes from stopped to running. The local
+  train is created running (efficiency drives its speed), so the first
+  announcement is the session start itself.
+- The local train no longer starts `stopped` with `efficiency: 0.7`; main
+  changed it to `running` with the efficiency score before this landed, and
+  the session keeps that.

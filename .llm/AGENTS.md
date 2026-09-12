@@ -55,9 +55,16 @@ All from the repo root.
   store. Per-frame animation state lives in refs, not React state.
 - The study efficiency score has one home: `features/efficiency`. Sources
   report into it (`report(source, 0..1, { weight, halfLifeMs })`); readers read
-  `score` and never recompute their own. `features/session` is the only writer
-  into `world`.
+  `score` and never recompute their own. `features/session` (the score) and
+  `features/speech` (utterances) are the only writers into `world`.
 - Scene numbers live in `features/scene/constants.ts`. Tune there, not inline.
 - Character sprites are 500x500 PNGs with transparent margins in
   `apps/web/public/characters/`. Every sprite maps whole onto the same square
   plane, so how much canvas a drawing fills is how big it is in the world.
+- `train.speech` is set by `say` and cleared only by `features/speech`. The
+  scene shows a bubble and bobs the conductor sprite while it is set and knows
+  nothing about clips or timing.
+- Adding a character drawing: add its id to `avatarIdSchema` in shared, the
+  PNG to `apps/web/public/characters/`, and its display name in
+  `features/profile/avatars.ts`. Adding a voice line: drop the clip in
+  `apps/web/public/audio/` and register it in `features/speech/lines.ts`.
