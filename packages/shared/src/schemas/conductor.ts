@@ -155,11 +155,15 @@ export const answerResultSchema = z.object({
 
 export type AnswerResult = z.infer<typeof answerResultSchema>;
 
+// The most of an earlier answer that is sent back as history. The TA's own
+// answers are not capped, so the web trims them to this before echoing them.
+export const MAX_ASK_ANSWER_CHARS = 8000;
+
 // One earlier exchange in the ask panel, sent back with the next question so
 // a follow-up ("and the second one?") has something to refer to.
 export const askTurnSchema = z.object({
   question: z.string().min(1).max(2000),
-  answer: z.string().max(8000),
+  answer: z.string().max(MAX_ASK_ANSWER_CHARS),
 });
 
 export type AskTurn = z.infer<typeof askTurnSchema>;
