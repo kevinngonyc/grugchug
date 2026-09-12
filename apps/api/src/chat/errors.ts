@@ -3,19 +3,16 @@
 // body and nothing in the server console, which is a bad afternoon.
 import type { ChatErrorCode } from "@grugchug/shared";
 
-/**
- * A short, actionable sentence for the client. The full error is logged
- * server-side; what comes back here only names the cause when knowing it
- * helps, and the two cases worth naming are both local setup mistakes.
- */
+/** Keep paths and raw errors in server logs; give storage setup guidance. */
 export function explainFailure(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : String(cause ?? "");
-
-  if (message.includes("MONGODB_URI")) {
-    return "the API has no MONGODB_URI — copy .env.example to apps/api/.env and restart it";
-  }
-  if (/ECONNREFUSED|ServerSelection|failed to connect|topology|ETIMEDOUT/i.test(message)) {
-    return "the API cannot reach MongoDB — start it with `docker compose up -d`";
+  const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+  if (
+    typeof code === "string" &&
+    ["SQLITE_CANTOPEN", "SQLITE_READONLY", "EACCES", "EPERM", "EROFS"].some(
+      (known) => code === known || code.startsWith(`${known}_`),
+    )
+  ) {
+    return "storage is not writable; check SQLITE_PATH and permissions on the database file and its directory";
   }
   return "something went wrong on the server";
 }

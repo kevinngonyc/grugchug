@@ -1,8 +1,9 @@
 import { Clone, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { type RefObject, Suspense, useEffect, useRef } from "react";
+import { type RefObject, Suspense, useCallback, useEffect, useRef } from "react";
 import type { Group, Object3D } from "three";
 import { useConductorUi } from "@/features/conductor";
+import { useAvatarPickerUi } from "@/features/profile";
 import { targetSpeed, useWorld } from "@/features/world";
 import { Character } from "./character";
 import {
@@ -15,8 +16,17 @@ import {
 } from "./constants";
 import { DriftMarker } from "./drift-marker";
 import { MODELS } from "./models";
-import { createMotion, driftClosing, driftGap, type LaneMotion, stepMotion } from "./motion";
+import {
+  createMotion,
+  driftClosing,
+  driftGap,
+  type LaneMotion,
+  registerMotion,
+  stepMotion,
+  unregisterMotion,
+} from "./motion";
 import { Smoke } from "./smoke";
+import { useRegroup } from "./use-regroup";
 
 type TrainProps = { trainId: string; motion: RefObject<LaneMotion> };
 
@@ -51,10 +61,30 @@ export function Train({ trainId, motion }: TrainProps) {
   // frame, so coming and going costs no re-renders.
   const gap = useRef(0);
 
-  // Checked in the frame loop, like the lane's. A train that mounts later
-  // starts from the count it finds, so a newcomer does not stop dead the
-  // moment it appears — it has nothing to regroup from yet.
-  const seenRegroups = useRef(useWorld.getState().regroups);
+  // Lanes read a companion's motion from the registry to place its stations.
+  // Level it with the lane before handing it over: Lane's own station effect
+  // runs on this same commit, and for a train that mounts already
+  // stopped/finished it would otherwise read the fresh, unlevelled motion
+  // (scroll 0, speed 0) and plant the station at the world origin.
+  useEffect(() => {
+    if (isLocal) return;
+    own.current.scroll = motion.current.scroll;
+    own.current.speed = motion.current.speed;
+    synced.current = true;
+    registerMotion(trainId, own.current);
+    return () => unregisterMotion(trainId);
+  }, [trainId, isLocal, motion]);
+
+  // A new arrival is a fresh start: everyone stops and everyone is level
+  // again, rather than the newcomer meeting a line that is already strung out
+  // over a kilometre. Re-placing is what the sync below already does, so this
+  // only has to ask for it. Nothing pops — a train far enough out for the
+  // reset to matter is off screen while it happens.
+  useRegroup(
+    useCallback(() => {
+      synced.current = false;
+    }, []),
+  );
 
   useEffect(() => {
     const found: Object3D[] = [];
@@ -69,16 +99,6 @@ export function Train({ trainId, motion }: TrainProps) {
     const step = Math.min(dt, 0.1);
     const world = useWorld.getState();
 
-    // A new arrival lines the whole party up again, rather than the newcomer
-    // meeting a line strung out over a kilometre. Re-placing is what the sync
-    // below already does, so this only has to ask for it. Nothing pops — a
-    // train far enough out for the reset to matter is off screen while it
-    // happens.
-    if (world.regroups !== seenRegroups.current) {
-      seenRegroups.current = world.regroups;
-      synced.current = false;
-    }
-
     if (!isLocal) {
       const train = world.trains[trainId];
       if (train) {
@@ -92,10 +112,16 @@ export function Train({ trainId, motion }: TrainProps) {
         const cruise = targetSpeed({ phase: "running", efficiency: train.efficiency });
         stepMotion(own.current, cruise, targetSpeed(train), step);
 
+        // A friend resting at their platform keeps their distance: closing the
+        // gap would slide the train off the station it stopped at.
+        const drifted = driftGap(own.current, lane.scroll);
+        const closing =
+          own.current.stopTarget === null
+            ? driftClosing(drifted, own.current.speed - lane.speed, step)
+            : 0;
+        const closed = drifted - closing;
         // Folded back into this train's own scroll rather than kept as a
         // correction, so there is still only one number saying where it is.
-        const drifted = driftGap(own.current, lane.scroll);
-        const closed = drifted - driftClosing(drifted, own.current.speed - lane.speed, step);
         own.current.scroll = lane.scroll + closed;
 
         gap.current = closed;
@@ -128,7 +154,10 @@ export function Train({ trainId, motion }: TrainProps) {
         </Suspense>
         {spriteUrl ? (
           <Suspense fallback={null}>
-            <Character url={spriteUrl} />
+            <Character
+              url={spriteUrl}
+              onClick={isLocal ? () => useAvatarPickerUi.getState().setOpen(true) : undefined}
+            />
           </Suspense>
         ) : null}
       </group>

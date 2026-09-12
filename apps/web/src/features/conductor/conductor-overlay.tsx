@@ -14,14 +14,19 @@ import { AskPanel } from "./ask-panel";
 import { ConductorPanel } from "./conductor-panel";
 import { SessionControls } from "./session-controls";
 import { useConductorUi } from "./store";
+import { useStudyDrive } from "./study-drive";
 import { useStudySession } from "./study-session";
 
+// Opaque rather than frosted: a backdrop blur over a canvas that moves every
+// frame is re-computed every frame, across most of the screen.
 const panelCardClass =
-  "overflow-hidden rounded-2xl border border-border/40 bg-background/55 shadow-xl backdrop-blur-md";
+  "overflow-hidden rounded-2xl border border-border/40 bg-background/90 shadow-xl";
 
 export function ConductorOverlay() {
   const open = useConductorUi((s) => s.open);
   const plan = useStudySession((s) => s.plan);
+
+  useStudyDrive();
 
   useEffect(() => {
     void useStudySession.getState().hydrate();

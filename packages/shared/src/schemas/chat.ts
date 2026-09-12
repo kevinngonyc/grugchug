@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { journeySchema } from "./journey";
+import { avatarIdSchema } from "./user";
 
 // Chat: one room at a time, the people connected to it, and what they say.
-// Everything here crosses the HTTP or WebSocket boundary, or lands in MongoDB.
+// Everything here crosses the HTTP or WebSocket boundary, or is stored.
 //
 // A browser is in exactly one room: the last one it joined. The server hands
 // that room back on request and creates one the first time, so there is no
@@ -69,7 +71,9 @@ export const chatMessageSchema = z.object({
 // Who is connected to the room right now, and how their study is going. This
 // is never stored: it is derived from the open sockets and dies with them.
 // `efficiency` is the 0..1 study score, the same number a train runs on, so a
-// friend's train can pull ahead or fall behind on screen.
+// friend's train can pull ahead or fall behind on screen. `focusedSeconds` is
+// the focused time they have banked today, as their own client counts it, so
+// every screen's leaderboard agrees. Optional so an older client still parses.
 export const chatPresenceMemberSchema = z.object({
   /**
    * One open socket, which is what a rider actually is. Not the userId: a
@@ -82,6 +86,11 @@ export const chatPresenceMemberSchema = z.object({
   userId: userIdSchema,
   displayName: displayNameSchema,
   efficiency: z.number().min(0).max(1),
+  // The rider's picked character and where they are on their route. Optional
+  // on the wire so an older client that never sends them still parses.
+  avatar: avatarIdSchema.optional(),
+  journey: journeySchema.optional(),
+  focusedSeconds: z.number().nonnegative().optional(),
 });
 
 export type ChatRoom = z.infer<typeof chatRoomSchema>;
@@ -150,6 +159,14 @@ export const clientChatEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("focus"),
     efficiency: z.number().min(0).max(1),
+    focusedSeconds: z.number().nonnegative().optional(),
+  }),
+  // Where you are on your route and what you look like, so the room can draw
+  // your train stopping at a station with your own avatar in the cart.
+  z.object({
+    type: z.literal("journey"),
+    avatar: avatarIdSchema,
+    journey: journeySchema,
   }),
 ]);
 

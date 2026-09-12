@@ -21,8 +21,9 @@ export type SpeechPlayer = { start(): void; stop(): void };
 type Playing = { speechId: string; audio: AudioLike | null; timer: unknown | null };
 
 // Watches the world for new utterances on every train, plays each once, and
-// clears it from the store when it finishes. A driver, like the session
-// timer: it reaches the world only through commands.
+// clears it from the store when it finishes. Only the local train is heard:
+// its clips play; every other train's line is a bubble timed by its text. A
+// driver, like the session timer: it reaches the world only through commands.
 export function createSpeechPlayer(deps: SpeechPlayerDeps): SpeechPlayer {
   const seen = new Set<string>();
   const playing = new Map<string, Playing>();
@@ -59,7 +60,10 @@ export function createSpeechPlayer(deps: SpeechPlayerDeps): SpeechPlayer {
     const entry: Playing = { speechId: speech.id, audio: null, timer: null };
     playing.set(trainId, entry);
 
-    if (speech.audioUrl === undefined) {
+    // Only your own conductor is heard. Friends' lines are seen as bubbles,
+    // timed by their text, so a room of trains is not a room of voices.
+    const isLocal = useWorld.getState().localTrainId === trainId;
+    if (speech.audioUrl === undefined || !isLocal) {
       entry.timer = startTimer(trainId, speech);
       return;
     }

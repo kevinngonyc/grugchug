@@ -1,9 +1,20 @@
-// Offline: ./api is stubbed via mock.module before study-session.ts (which
-// imports it) is loaded, so nothing here touches the network. The world
-// store is real — same pattern as features/session/use-party-trains.test.ts
-// — since setPhase's actual effect is exactly what these tests check.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+// Offline: ./api and ./history are stubbed via mock.module before
+// study-session.ts (which imports both) is loaded, so nothing here touches
+// the network. The world store and efficiency store are real — same pattern
+// as features/session/use-party-trains.test.ts — since applyStudyPhase's and
+// report's actual effects are exactly what these tests check. The real
+// modules are captured up front and restored in afterAll: mock.module patches
+// the module registry for the whole process, not just this file, and other
+// test files (session-history.test.tsx, dashboard.test.tsx) import the real
+// ./history (see features/session/use-journey-link.test.ts for the same
+// restore pattern).
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { useEfficiency } from "@/features/efficiency";
+import { VOICE_LINES } from "@/features/speech";
 import { useWorld } from "@/features/world";
+
+const realApi = await import("./api");
+const realHistory = await import("./history");
 
 const apiMocks = {
   createPlan: mock(),
@@ -14,11 +25,25 @@ const apiMocks = {
   askConductor: mock(),
 };
 
+const historyMocks = {
+  startHistory: mock(),
+  recordHistory: mock(),
+  endHistory: mock(),
+  fetchHistory: mock(),
+};
+
 mock.module("./api", () => apiMocks);
+mock.module("./history", () => historyMocks);
 
 const { useStudySession } = await import("./study-session");
 const { useConductorUi } = await import("./store");
 const { useMaterialLibrary } = await import("./material-library");
+const { applyStudyPhase } = await import("./study-drive");
+
+afterAll(() => {
+  mock.module("./api", () => realApi);
+  mock.module("./history", () => realHistory);
+});
 
 const plan = {
   id: "plan-1",
@@ -48,8 +73,21 @@ const plan = {
   ],
 };
 
+function speechOf() {
+  return useWorld.getState().trains.local?.speech;
+}
+
+// Lets every already-resolved microtask run before a pending-promise
+// assertion, without depending on how many `await`s a mocked resolution
+// takes to settle.
+const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
 beforeEach(() => {
   for (const m of Object.values(apiMocks)) m.mockReset();
+  for (const m of Object.values(historyMocks)) m.mockReset();
+  historyMocks.startHistory.mockResolvedValue("h1");
+  historyMocks.recordHistory.mockResolvedValue(undefined);
+  historyMocks.endHistory.mockResolvedValue(undefined);
   useWorld.setState({ trains: {}, localTrainId: null, regroups: 0 });
   useWorld.getState().addTrain({
     id: "local",
@@ -59,6 +97,7 @@ beforeEach(() => {
     lane: 0,
   });
   useWorld.getState().setLocalTrainId("local");
+  useEfficiency.getState().reset();
   useConductorUi.setState({ open: true });
   useMaterialLibrary.setState({ items: [], planId: null });
   localStorage.removeItem("grugchug.conductor.library");
@@ -74,6 +113,8 @@ beforeEach(() => {
     stationFeedback: null,
     busy: false,
     error: null,
+    historyId: null,
+    departed: false,
   });
 });
 
@@ -84,6 +125,7 @@ describe("startSession", () => {
     expect(s.plan).toBe(plan);
     expect(s.stationIndex).toBe(0);
     expect(s.mode).toBe("idle");
+    expect(s.historyId).toBeNull();
   });
 });
 
@@ -153,7 +195,7 @@ describe("studyAll", () => {
 });
 
 describe("startStudying", () => {
-  test("starts a countdown from the model's suggested minutes and closes the panel", async () => {
+  test("starts a countdown, says the departure line, and opens a history record on a fresh route", async () => {
     apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Let's go" });
     useStudySession.getState().startSession(plan);
 
@@ -165,6 +207,15 @@ describe("startStudying", () => {
     expect(s.lastStretchMinutes).toBe(5);
     expect(s.timerEndsAt).not.toBeNull();
     expect(useConductorUi.getState().open).toBe(false);
+
+    expect(speechOf()?.text).toBe(VOICE_LINES.startSession.text);
+    expect(speechOf()?.audioUrl).toBe(VOICE_LINES.startSession.audioUrl);
+    expect(s.historyId).toBe("h1");
+    expect(historyMocks.startHistory).toHaveBeenCalledTimes(1);
+    const call = historyMocks.startHistory.mock.calls[0]?.[0];
+    expect(call?.planId).toBe(plan.id);
+    expect(call?.stationTotal).toBe(plan.stations.length);
+    expect(typeof call?.userId).toBe("string");
   });
 
   test("surfaces an error and does not change mode when the call fails", async () => {
@@ -176,28 +227,121 @@ describe("startStudying", () => {
     const s = useStudySession.getState();
     expect(s.mode).toBe("idle");
     expect(s.error).toBeTruthy();
+    expect(historyMocks.startHistory).not.toHaveBeenCalled();
+  });
+
+  test("does not reopen a history record for a departure that follows a passed station", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Next up" });
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ historyId: "h1", departed: true });
+
+    await useStudySession.getState().startStudying();
+
+    expect(historyMocks.startHistory).not.toHaveBeenCalled();
+    expect(useStudySession.getState().historyId).toBe("h1");
+  });
+
+  test("persists departed before the history POST resolves, so a reload cannot replay it", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Go" });
+    let resolveStartHistory: (id: string | null) => void = () => {};
+    historyMocks.startHistory.mockImplementation(
+      () =>
+        new Promise<string | null>((resolve) => {
+          resolveStartHistory = resolve;
+        }),
+    );
+    useStudySession.getState().startSession(plan);
+
+    const promise = useStudySession.getState().startStudying();
+
+    // The mode change and `departed: true` are committed synchronously once
+    // setTimer resolves, before startHistory's promise ever settles. Flush
+    // with a macrotask so every already-resolved microtask (setTimer's
+    // continuation included) has run first.
+    await flush();
+    expect(useStudySession.getState().mode).toBe("counting");
+    expect(useStudySession.getState().departed).toBe(true);
+    expect(useStudySession.getState().historyId).toBeNull();
+
+    resolveStartHistory("h1");
+    await promise;
+
+    expect(useStudySession.getState().historyId).toBe("h1");
+  });
+
+  test("does not replay the departure after a history POST failure", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Go" });
+    historyMocks.startHistory.mockResolvedValue(null);
+    useStudySession.getState().startSession(plan);
+
+    await useStudySession.getState().startStudying();
+
+    expect(speechOf()?.text).toBe(VOICE_LINES.startSession.text);
+    expect(useStudySession.getState().historyId).toBeNull();
+    expect(useStudySession.getState().departed).toBe(true);
+    expect(historyMocks.startHistory).toHaveBeenCalledTimes(1);
+
+    // Reach the station and pass it: the next departure runs through the
+    // same startStudying path and must not replay the line or the POST.
+    useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() - 1 });
+    useStudySession.getState().tick();
+    useStudySession.getState().chooseAnswer();
+    useStudySession.getState().setAnswer("q1", { type: "mcq", choiceIndex: 1 });
+    useStudySession.getState().setAnswer("q2", { type: "short", text: "because" });
+    apiMocks.submitAnswer.mockResolvedValue({
+      questionId: "irrelevant",
+      score: 1,
+      passed: true,
+      feedback: "Correct.",
+    });
+    apiMocks.evaluateProgress.mockResolvedValue({ passed: true, feedback: "Nice." });
+
+    await useStudySession.getState().submitAllAndFinish();
+
+    expect(historyMocks.startHistory).toHaveBeenCalledTimes(1);
+    expect(speechOf()?.text).toBe(VOICE_LINES.passQuiz.text);
   });
 });
 
 describe("tick", () => {
-  test("stops the train and moves to at-station once a study countdown elapses", () => {
+  test("stops the train and announces the arriving station once a study countdown elapses", () => {
     useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() - 1 });
 
     useStudySession.getState().tick();
+    applyStudyPhase();
 
     expect(useStudySession.getState().mode).toBe("at-station");
     expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+    expect(speechOf()?.text).toBe(`Now arriving: ${plan.stations[0]?.title}`);
+    expect(speechOf()?.audioUrl).toBeUndefined();
   });
 
-  test("returns to at-station without touching train phase once a break elapses", () => {
+  test("a fresh arrival clears the last station's feedback and scores", () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({
+      mode: "counting",
+      timerEndsAt: Date.now() - 1,
+      stationFeedback: "Great work.",
+      results: { q1: { questionId: "q1", score: 1, passed: true, feedback: "Correct." } },
+    });
+
+    useStudySession.getState().tick();
+
+    expect(useStudySession.getState().stationFeedback).toBeNull();
+    expect(useStudySession.getState().results).toEqual({});
+  });
+
+  test("returns to at-station and says the break is over once a break elapses", () => {
     useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "on-break", timerEndsAt: Date.now() - 1 });
 
     useStudySession.getState().tick();
+    applyStudyPhase();
 
     expect(useStudySession.getState().mode).toBe("at-station");
-    expect(useWorld.getState().trains.local?.phase).toBe("running");
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+    expect(speechOf()?.text).toBe("Break's over.");
   });
 
   test("does nothing before the timer has elapsed", () => {
@@ -210,32 +354,79 @@ describe("tick", () => {
   });
 });
 
+describe("chooseBreak", () => {
+  test("says the take-break line", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Rest up" });
+    useStudySession.getState().startSession(plan);
+
+    await useStudySession.getState().chooseBreak();
+
+    expect(useStudySession.getState().mode).toBe("on-break");
+    expect(speechOf()?.text).toBe(VOICE_LINES.takeBreak.text);
+  });
+});
+
+describe("chooseKeepStudying", () => {
+  test("says the restart-study line", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Again" });
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "at-station" });
+
+    await useStudySession.getState().chooseKeepStudying();
+
+    expect(useStudySession.getState().mode).toBe("counting");
+    expect(speechOf()?.text).toBe(VOICE_LINES.restartStudy.text);
+  });
+});
+
 describe("submitAllAndFinish", () => {
   function answerEverything() {
     useStudySession.getState().setAnswer("q1", { type: "mcq", choiceIndex: 1 });
     useStudySession.getState().setAnswer("q2", { type: "short", text: "because" });
   }
 
-  test("advances to the next station and starts its timer when the station passes", async () => {
+  test("advances and shows the result, but leaves the timer for the learner to start", async () => {
     apiMocks.submitAnswer.mockImplementation(async (_stationId, body: { questionId: string }) => ({
       questionId: body.questionId,
-      score: 1,
+      score: body.questionId === "q1" ? 1 : 0.5,
       passed: true,
       feedback: "Correct.",
     }));
     apiMocks.evaluateProgress.mockResolvedValue({ passed: true, feedback: "Great work." });
-    apiMocks.setTimer.mockResolvedValue({ minutes: 8, message: "Next up" });
 
     useStudySession.getState().startSession(plan);
-    useStudySession.setState({ mode: "answering" });
+    useStudySession.setState({ mode: "answering", historyId: "h1", departed: true });
+    applyStudyPhase();
     answerEverything();
 
     await useStudySession.getState().submitAllAndFinish();
 
     const s = useStudySession.getState();
     expect(s.stationIndex).toBe(1);
-    expect(s.mode).toBe("counting"); // startStudying ran for station 2
+    expect(s.mode).toBe("passed");
+    expect(s.stationFeedback).toBe("Great work.");
+    expect(s.results.q1?.feedback).toBe("Correct.");
+    // Still parked: nothing has started the next station's timer yet.
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+
+    apiMocks.setTimer.mockResolvedValue({ minutes: 8, message: "Next up" });
+    await useStudySession.getState().startStudying();
+
+    expect(useStudySession.getState().mode).toBe("counting");
+    applyStudyPhase();
     expect(useWorld.getState().trains.local?.phase).toBe("running");
+
+    expect(useEfficiency.getState().signals.quiz?.value).toBeCloseTo(0.75, 6);
+    expect(historyMocks.recordHistory).toHaveBeenCalledWith("h1", {
+      stationIndex: 0,
+      stationId: "s1",
+      passed: true,
+      meanScore: 0.75,
+    });
+
+    // startStudying ran for the next station but the history record was
+    // already open, so the pass line is still the one showing.
+    expect(speechOf()?.text).toBe(VOICE_LINES.passQuiz.text);
   });
 
   test("goes back to at-station with feedback, keeping the same station, when it fails", async () => {
@@ -248,7 +439,7 @@ describe("submitAllAndFinish", () => {
     apiMocks.evaluateProgress.mockResolvedValue({ passed: false, feedback: "Try again." });
 
     useStudySession.getState().startSession(plan);
-    useStudySession.setState({ mode: "answering" });
+    useStudySession.setState({ mode: "answering", historyId: "h1" });
     answerEverything();
 
     await useStudySession.getState().submitAllAndFinish();
@@ -257,9 +448,16 @@ describe("submitAllAndFinish", () => {
     expect(s.stationIndex).toBe(0);
     expect(s.mode).toBe("at-station");
     expect(s.stationFeedback).toBe("Try again.");
+    expect(historyMocks.recordHistory).toHaveBeenCalledWith("h1", {
+      stationIndex: 0,
+      stationId: "s1",
+      passed: false,
+      meanScore: 0,
+    });
+    expect(s.results.q1?.feedback).toBe("Not quite.");
   });
 
-  test("reaches complete after the last station passes", async () => {
+  test("says the great-session line, finishes, and ends history as completed after the last station passes", async () => {
     apiMocks.submitAnswer.mockResolvedValue({
       questionId: "q3",
       score: 1,
@@ -269,13 +467,22 @@ describe("submitAllAndFinish", () => {
     apiMocks.evaluateProgress.mockResolvedValue({ passed: true, feedback: "All done." });
 
     useStudySession.getState().startSession(plan);
-    useStudySession.setState({ stationIndex: 1, mode: "answering" });
+    useStudySession.setState({ stationIndex: 1, mode: "answering", historyId: "h1" });
     useStudySession.getState().setAnswer("q3", { type: "mcq", choiceIndex: 0 });
 
     await useStudySession.getState().submitAllAndFinish();
 
     expect(useStudySession.getState().mode).toBe("complete");
-    expect(useWorld.getState().trains.local?.phase).toBe("running");
+    applyStudyPhase();
+    expect(useWorld.getState().trains.local?.phase).toBe("finished");
+    expect(speechOf()?.text).toBe(VOICE_LINES.greatSession.text);
+    expect(historyMocks.endHistory).toHaveBeenCalledWith("h1", "completed");
+    expect(historyMocks.recordHistory).toHaveBeenCalledWith("h1", {
+      stationIndex: 1,
+      stationId: "s2",
+      passed: true,
+      meanScore: 1,
+    });
   });
 
   test("refuses to submit until every question has an answer", async () => {
@@ -290,17 +497,61 @@ describe("submitAllAndFinish", () => {
   });
 });
 
-describe("quit", () => {
-  test("clears the session and resumes a train left stopped at a station", () => {
+describe("skipTimer", () => {
+  test("ends a study countdown now: the train stops and the station is up", () => {
     useStudySession.getState().startSession(plan);
-    useWorld.getState().setPhase("local", "stopped");
-    useStudySession.setState({ mode: "at-station" });
+    useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() + 25 * 60_000 });
+
+    useStudySession.getState().skipTimer();
+    applyStudyPhase();
+
+    expect(useStudySession.getState().mode).toBe("at-station");
+    expect(useStudySession.getState().timerEndsAt).toBeNull();
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+  });
+
+  test("ends a break early back at the station", () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "on-break", timerEndsAt: Date.now() + 5 * 60_000 });
+
+    useStudySession.getState().skipTimer();
+    applyStudyPhase();
+
+    expect(useStudySession.getState().mode).toBe("at-station");
+  });
+
+  test("does nothing when no countdown is running", () => {
+    useStudySession.getState().startSession(plan);
+
+    useStudySession.getState().skipTimer();
+    applyStudyPhase();
+
+    expect(useStudySession.getState().mode).toBe("idle");
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+  });
+});
+
+describe("quit", () => {
+  test("clears the session, parks the train, and ends history as quit", () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "at-station", historyId: "h1" });
 
     useStudySession.getState().quit();
 
     const s = useStudySession.getState();
     expect(s.plan).toBeNull();
     expect(s.mode).toBe("idle");
-    expect(useWorld.getState().trains.local?.phase).toBe("running");
+    expect(historyMocks.endHistory).toHaveBeenCalledWith("h1", "quit");
+    applyStudyPhase();
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+  });
+
+  test("does not end history when quitting after completion", () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "complete", historyId: "h1" });
+
+    useStudySession.getState().quit();
+
+    expect(historyMocks.endHistory).not.toHaveBeenCalled();
   });
 });

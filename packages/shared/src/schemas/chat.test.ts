@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   chatMessageSchema,
+  chatPresenceMemberSchema,
   clientChatEventSchema,
   displayNameSchema,
   inviteCodeSchema,
@@ -87,5 +88,33 @@ describe("wire protocol", () => {
     const parsed = joinRoomRequestSchema.parse({ inviteCode: "k4m7hq2z", displayName: " Ada " });
     expect(parsed.inviteCode).toBe("K4M7HQ2Z");
     expect(parsed.displayName).toBe("Ada");
+  });
+});
+
+describe("presence with a journey", () => {
+  test("a member may carry an avatar and where they are", () => {
+    const member = {
+      connectionId: "c1",
+      userId: "u1",
+      displayName: "Ada",
+      efficiency: 0.5,
+      avatar: "cat" as const,
+      journey: { state: "on-break" as const, station: { index: 3, total: 5 } },
+    };
+    expect(chatPresenceMemberSchema.parse(member)).toEqual(member);
+  });
+
+  test("a member without them still parses", () => {
+    const member = { connectionId: "c1", userId: "u1", displayName: "Ada", efficiency: 0.5 };
+    expect(chatPresenceMemberSchema.parse(member)).toEqual(member);
+  });
+
+  test("the journey client event carries avatar and journey", () => {
+    const event = {
+      type: "journey" as const,
+      avatar: "doug" as const,
+      journey: { state: "studying" as const, station: { index: 1, total: 2 } },
+    };
+    expect(clientChatEventSchema.parse(event)).toEqual(event);
   });
 });

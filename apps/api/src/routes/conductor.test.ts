@@ -1,5 +1,5 @@
 // Offline: every dependency (tool runners, store) is a fake injected via
-// each handler's deps parameter — no MongoDB, no LLM calls.
+// each handler's deps parameter — no SQLite, no LLM calls.
 import { describe, expect, test } from "bun:test";
 import type { Question, RoutePlan } from "@grugchug/shared";
 import { fixtureRoutePlan } from "../conductor/fixtures";
@@ -43,6 +43,9 @@ function mcq(id: string): Question {
 }
 function short(id: string): Question {
   return { id, type: "short", prompt: "p", rubric: "r", referenceAnswer: "a" };
+}
+function multi(id: string): Question {
+  return { id, type: "multi", prompt: "p", choices: ["a", "b", "c"], correctIndices: [0, 1] };
 }
 const fourQuestions: Question[] = [mcq("q1"), mcq("q2"), mcq("q3"), short("q4")];
 
@@ -173,7 +176,7 @@ describe("createPlan", () => {
         runGenerateQuestions: async () =>
           toolResult<GenerateQuestionsOutput>({ questions: fourQuestions }),
         save: async () => {
-          throw new Error("mongo is down");
+          throw new Error("database is down");
         },
       },
     );
@@ -236,7 +239,7 @@ describe("getPlan", () => {
   test("500s when the store throws", async () => {
     const res = await getPlanWithDeps(withParams("p1"), {
       get: async () => {
-        throw new Error("mongo is down");
+        throw new Error("database is down");
       },
     });
     expect(res.status).toBe(500);
@@ -256,7 +259,7 @@ describe("answerStation", () => {
         title: "One",
         scope: "x",
         estimatedMinutes: 10,
-        questions: fourQuestions,
+        questions: [...fourQuestions, multi("q5")],
       },
     ],
   };
@@ -275,6 +278,19 @@ describe("answerStation", () => {
     let called = false;
     const res = await answer(
       { planId: "p1", questionId: "q1", answer: { type: "mcq", choiceIndex: 0 } },
+      async () => {
+        called = true;
+        return toolResult<GradeShortOutput>({ score: 1, passed: true, feedback: "" });
+      },
+    );
+    expect(await res.json()).toMatchObject({ score: 1, passed: true });
+    expect(called).toBe(false);
+  });
+
+  test("grades multi locally without calling gradeShort", async () => {
+    let called = false;
+    const res = await answer(
+      { planId: "p1", questionId: "q5", answer: { type: "multi", choiceIndices: [1, 0] } },
       async () => {
         called = true;
         return toolResult<GradeShortOutput>({ score: 1, passed: true, feedback: "" });

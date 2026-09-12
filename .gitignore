@@ -119,6 +119,9 @@ dist
 # --- Project ---
 .claude/settings.local.json
 
+# SQLite data directory (the db file plus WAL/SHM side files)
+apps/api/data/
+
 # Claude Code worktrees (linked checkouts, never committed)
 .claude/worktrees/
 .superpowers/

@@ -10,7 +10,7 @@
 //
 // Each handler takes its real dependencies (tool runners, store functions)
 // as a defaulted parameter, so tests can inject fakes and stay offline —
-// no MongoDB, no LLM calls — while production code (index.ts) gets the
+// no SQLite, no LLM calls — while production code (index.ts) gets the
 // real ones for free.
 import {
   type AnswerResult,
@@ -29,43 +29,21 @@ import {
   setTimerRequestSchema,
   setTimerResponseSchema,
 } from "@grugchug/shared";
-import type { z } from "zod";
 import { fixtureRoutePlan } from "../conductor/fixtures";
 import { getRoutePlanById, saveRoutePlan } from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
 import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
 import { generateQuestionsTool } from "../conductor/tools/generate-questions";
-import { gradeMcq, gradeShortAnswerTool } from "../conductor/tools/grade-answer";
+import { gradeMcq, gradeMulti, gradeShortAnswerTool } from "../conductor/tools/grade-answer";
 import type { StationSkeleton } from "../conductor/tools/plan-route";
 import { planRouteTool } from "../conductor/tools/plan-route";
 import { setTimerTool } from "../conductor/tools/set-timer";
+import { readBody as readHttpBody } from "./http";
 
 type WithParams<P extends string> = Request & { params: Record<P, string> };
 
-type BodyResult<T> = { ok: true; data: T } | { ok: false; response: Response };
-
-async function readBody<S extends z.ZodType>(
-  req: Request,
-  schema: S,
-): Promise<BodyResult<z.output<S>>> {
-  let json: unknown;
-  try {
-    json = await req.json();
-  } catch {
-    return { ok: false, response: Response.json({ error: "body must be JSON" }, { status: 400 }) };
-  }
-  const result = schema.safeParse(json);
-  if (!result.success) {
-    return {
-      ok: false,
-      response: Response.json(
-        { error: "invalid body", issues: result.error.issues },
-        { status: 400 },
-      ),
-    };
-  }
-  return { ok: true, data: result.data };
-}
+const readBody: typeof readHttpBody = (req, schema) =>
+  readHttpBody(req, schema, "invalid body", true);
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -235,6 +213,8 @@ export async function answerStationWithDeps(
   let result: AnswerResult;
   if (question.type === "mcq" && answer.type === "mcq") {
     result = gradeMcq(question, answer.choiceIndex);
+  } else if (question.type === "multi" && answer.type === "multi") {
+    result = gradeMulti(question, answer.choiceIndices);
   } else if (question.type === "short" && answer.type === "short") {
     const graded = await deps.gradeShort({
       rubric: question.rubric,

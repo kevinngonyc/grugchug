@@ -7,7 +7,13 @@
 // sockets *is* the roster, so someone who closes the tab is gone, and a
 // restart starts everyone empty. That is what lets the browser draw a train
 // per person in the room without any notion of "offline".
-import type { ChatPresenceMember, ClientChatEvent, ServerChatEvent } from "@grugchug/shared";
+import type {
+  AvatarId,
+  ChatPresenceMember,
+  ClientChatEvent,
+  Journey,
+  ServerChatEvent,
+} from "@grugchug/shared";
 import { clientChatEventSchema } from "@grugchug/shared";
 import type { ServerWebSocket, WebSocketHandler } from "bun";
 import { newId } from "./ids";
@@ -22,6 +28,11 @@ export interface ChatSocketData {
   displayName: string;
   /** Last study score this connection reported, 0..1. */
   efficiency: number;
+  /** The rider's picked character and where they are on their route, once sent. */
+  avatar?: AvatarId;
+  journey?: Journey;
+  /** Focused time banked today, as last reported by this connection's client. */
+  focusedSeconds: number;
   limiter: RateLimiter;
 }
 
@@ -61,6 +72,7 @@ export function newSocketData(input: {
     ...input,
     connectionId: newId(),
     efficiency: 0,
+    focusedSeconds: 0,
     limiter: new RateLimiter(CHAT_RATE_LIMIT),
   };
 }
@@ -83,6 +95,9 @@ export function toPresence(connections: readonly ChatSocketData[]): ChatPresence
     userId: data.userId,
     displayName: data.displayName,
     efficiency: data.efficiency,
+    ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
+    ...(data.journey !== undefined ? { journey: data.journey } : {}),
+    focusedSeconds: data.focusedSeconds,
   }));
 }
 
@@ -159,8 +174,19 @@ async function handleRename(
 // they skip the message rate limiter. The client throttles them; a flood here
 // costs one broadcast to a handful of sockets.
 function handleFocus(ws: ChatSocket, event: Extract<ClientChatEvent, { type: "focus" }>): void {
-  if (ws.data.efficiency === event.efficiency) return;
+  // An older client sends no total; keep whatever this connection last said.
+  const focusedSeconds = event.focusedSeconds ?? ws.data.focusedSeconds;
+  if (ws.data.efficiency === event.efficiency && ws.data.focusedSeconds === focusedSeconds) return;
   ws.data.efficiency = event.efficiency;
+  ws.data.focusedSeconds = focusedSeconds;
+  broadcastPresence(ws.data.roomId);
+}
+
+// Journey updates are rare (a handful per session) and never touch the
+// database; like focus they skip the rate limiter and just broadcast.
+function handleJourney(ws: ChatSocket, event: Extract<ClientChatEvent, { type: "journey" }>): void {
+  ws.data.avatar = event.avatar;
+  ws.data.journey = event.journey;
   broadcastPresence(ws.data.roomId);
 }
 
@@ -182,6 +208,10 @@ export const chatWebSocket: WebSocketHandler<ChatSocketData> = {
     const event = decoded.event;
     if (event.type === "focus") {
       handleFocus(ws, event);
+      return;
+    }
+    if (event.type === "journey") {
+      handleJourney(ws, event);
       return;
     }
 

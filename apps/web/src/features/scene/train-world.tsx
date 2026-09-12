@@ -1,6 +1,6 @@
 import { PerformanceMonitor, Stats, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { targetSpeed, useWorld } from "@/features/world";
 import { ConductorCameraRig } from "./conductor-camera";
@@ -8,8 +8,8 @@ import {
   CAMERA_FOV,
   CAMERA_LOOK_AT,
   CAMERA_POSITION,
-  MAX_DPR,
-  MIN_DPR,
+  DPR_MAX,
+  DPR_MIN,
   SKY_COLOR,
   STATION_DISTANCE,
 } from "./constants";
@@ -17,6 +17,7 @@ import { Hills } from "./hills";
 import { Lane } from "./lane";
 import { ALL_MODEL_URLS } from "./models";
 import { createMotion, registerMotion, stepMotion, unregisterMotion } from "./motion";
+import { useRegroup } from "./use-regroup";
 import { VoiceListener } from "./voice-listener";
 
 for (const url of ALL_MODEL_URLS) useGLTF.preload(url);
@@ -29,13 +30,14 @@ type TrainWorldProps = {
 export function TrainWorld({ debug = false }: TrainWorldProps) {
   // Pixels are the one cost that scales with the window rather than with the
   // scene, so they are what gets given up first when frames start dropping.
-  const [dpr, setDpr] = useState(MAX_DPR);
+  const [dpr, setDpr] = useState(DPR_MAX);
 
   return (
     <Canvas
       camera={{ position: CAMERA_POSITION, fov: CAMERA_FOV }}
       onCreated={({ camera }) => camera.lookAt(...CAMERA_LOOK_AT)}
       dpr={dpr}
+      gl={{ powerPreference: "high-performance" }}
     >
       {/* `flipflops` is the important part: a machine sitting right on the
           threshold would otherwise trade pixel ratios back and forth forever,
@@ -44,9 +46,9 @@ export function TrainWorld({ debug = false }: TrainWorldProps) {
           settles on the low setting and stops asking. */}
       <PerformanceMonitor
         flipflops={3}
-        onDecline={() => setDpr(MIN_DPR)}
-        onIncline={() => setDpr(MAX_DPR)}
-        onFallback={() => setDpr(MIN_DPR)}
+        onDecline={() => setDpr(DPR_MIN)}
+        onIncline={() => setDpr(DPR_MAX)}
+        onFallback={() => setDpr(DPR_MIN)}
       />
       {debug ? <Stats /> : null}
       <VoiceListener />
@@ -69,6 +71,15 @@ function TravellingWorld() {
   const leaderId = useWorld((s) => s.localTrainId ?? Object.keys(s.trains)[0]);
   const phase = useWorld((s) => (leaderId ? s.trains[leaderId]?.phase : undefined));
   const motion = useRef(createMotion());
+
+  // Someone new is here: the whole world stops dead and winds back up from
+  // nothing. Scroll is left alone — stations and scenery are placed against
+  // it, and it is the shared clock every lane is measured from.
+  useRegroup(
+    useCallback(() => {
+      motion.current.speed = 0;
+    }, []),
+  );
 
   useEffect(() => {
     if (!leaderId) return;

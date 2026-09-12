@@ -1,26 +1,22 @@
 import { afterEach, expect, mock, test } from "bun:test";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 
+const begin = mock(() => Promise.resolve({}));
 const pause = mock(() => ({}));
 const resume = mock(() => Promise.resolve({}));
 const end = mock(() => ({}));
-const begin = mock(() => ({}));
+const removeMouseEventListeners = mock(() => ({}));
+const saveDataAcrossSessions = mock((_save: boolean) => Promise.resolve({}));
+let positions: number[][] | null = null;
 
-const fluent: {
-  showVideoPreview: ReturnType<typeof mock>;
-  showFaceOverlay: ReturnType<typeof mock>;
-  showFaceFeedbackBox: ReturnType<typeof mock>;
-  showPredictionPoints: ReturnType<typeof mock>;
-} = {
+const fluent: Record<string, ReturnType<typeof mock>> = {
   showVideoPreview: mock(),
   showFaceOverlay: mock(),
   showFaceFeedbackBox: mock(),
   showPredictionPoints: mock(),
 };
-fluent.showVideoPreview.mockImplementation(() => fluent);
-fluent.showFaceOverlay.mockImplementation(() => fluent);
-fluent.showFaceFeedbackBox.mockImplementation(() => fluent);
-fluent.showPredictionPoints.mockImplementation(() => fluent);
+for (const setter of Object.values(fluent)) setter.mockImplementation(() => fluent);
 
 mock.module("@webgazer-ts/core", () => ({
   default: {
@@ -29,61 +25,96 @@ mock.module("@webgazer-ts/core", () => ({
     pause,
     resume,
     end,
-    getTracker: () => ({ getPositions: () => null }),
+    removeMouseEventListeners,
+    saveDataAcrossSessions,
+    getTracker: () => ({ getPositions: () => positions }),
   },
 }));
 
 const { Gaze } = await import("./gaze");
 
-afterEach(() => {
+function setHidden(hidden: boolean): void {
+  Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+}
+
+afterEach(async () => {
   cleanup();
-  pause.mockClear();
-  resume.mockClear();
-  begin.mockClear();
-  end.mockClear();
-  Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+  // The tracker is shared module state: wait for the last user's release to
+  // end it, so the next test starts a fresh one.
+  await waitFor(() => expect(end).toHaveBeenCalled());
+  for (const fn of [begin, pause, resume, end, removeMouseEventListeners]) fn.mockClear();
+  saveDataAcrossSessions.mockClear();
+  setHidden(false);
+  positions = null;
 });
 
-test("sleeps the tracker between readings, with the tab still visible", async () => {
+test("starts WebGazer without the click-based regression it never reads", async () => {
   render(<Gaze />);
-  // The first reading is still being waited for.
+
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
+  expect(saveDataAcrossSessions).toHaveBeenCalledWith(false);
+  expect(removeMouseEventListeners).toHaveBeenCalled();
+  // The detection loop itself keeps running — sampling reads it, rather than
+  // driving detection at a lower rate, which is what tracking accuracy relies on.
   expect(pause).not.toHaveBeenCalled();
-
-  await act(async () => {
-    await new Promise((resolveWait) => setTimeout(resolveWait, 500));
-  });
-
-  // Woken, sampled, and put back to sleep without the tab ever being hidden.
-  // That gap is the whole point: the face-mesh loop is what makes the scene
-  // stutter, and it only has to run long enough for one reading.
-  expect(resume).toHaveBeenCalled();
-  expect(pause).toHaveBeenCalled();
 });
 
-test("pauses webgazer when the tab is hidden", () => {
+test("pauses webgazer when the tab is hidden", async () => {
   render(<Gaze />);
-  expect(begin).toHaveBeenCalled();
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
 
   act(() => {
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    setHidden(true);
     document.dispatchEvent(new Event("visibilitychange"));
   });
 
   expect(pause).toHaveBeenCalled();
 });
 
-test("resumes webgazer when the tab becomes visible again", () => {
+test("resumes webgazer when the tab becomes visible again", async () => {
   render(<Gaze />);
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
 
   act(() => {
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    setHidden(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  act(() => {
+    setHidden(false);
     document.dispatchEvent(new Event("visibilitychange"));
   });
 
+  await waitFor(() => expect(resume).toHaveBeenCalled());
+});
+
+test("reports the debounced looking-away state on transitions, not every tick", async () => {
+  const onLookingAwayChange = mock();
+  render(<Gaze onLookingAwayChange={onLookingAwayChange} />);
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
+
   act(() => {
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    setHidden(true);
     document.dispatchEvent(new Event("visibilitychange"));
   });
+  expect(onLookingAwayChange).toHaveBeenCalledTimes(1);
+  expect(onLookingAwayChange).toHaveBeenLastCalledWith(true);
 
-  expect(resume).toHaveBeenCalled();
+  // Hiding again while already away is not a new transition.
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(onLookingAwayChange).toHaveBeenCalledTimes(1);
+});
+
+test("StrictMode's double mount shares one tracker and ends it once", async () => {
+  const { unmount } = render(
+    <StrictMode>
+      <Gaze />
+    </StrictMode>,
+  );
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
+  expect(end).not.toHaveBeenCalled();
+
+  unmount();
+  await waitFor(() => expect(end).toHaveBeenCalledTimes(1));
 });

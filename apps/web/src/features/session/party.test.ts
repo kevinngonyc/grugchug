@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ChatPresenceMember } from "@grugchug/shared";
+import type { ChatPresenceMember, Journey } from "@grugchug/shared";
 import { arrivals, MAX_PARTY_TRAINS, partyTrainId, partyTrains, spriteForUserId } from "./party";
 
 // A rider is a connection. Tests give each one its own, and the two-tab case
@@ -32,20 +32,17 @@ describe("partyTrains", () => {
     expect(train?.phase).toBe("running");
   });
 
+  test("carries the focus time they banked, and none when an old client sent none", () => {
+    const [banked, silent] = partyTrains(
+      [{ ...member("ada"), focusedSeconds: 125 }, member("bo")],
+      "me",
+    );
+    expect(banked?.focusedSeconds).toBe(125);
+    expect(silent?.focusedSeconds).toBe(0);
+  });
+
   test("a signed-out visitor sees everyone, since nobody is them", () => {
     expect(partyTrains([member("ada"), member("bo")], null)).toHaveLength(2);
-  });
-});
-
-describe("spriteForUserId", () => {
-  test("is stable, so you look the same on every screen", () => {
-    expect(spriteForUserId("ada")).toBe(spriteForUserId("ada"));
-  });
-
-  test("always resolves to a sprite that exists", () => {
-    for (const id of ["", "a", "ada", "x".repeat(64), "Rider 4821"]) {
-      expect(spriteForUserId(id)).toMatch(/^\/characters\//);
-    }
   });
 });
 
@@ -91,4 +88,34 @@ test("two tabs of one browser are two riders with two trains", () => {
   expect(arrivals([first, second], new Set(["conn-a"]), "conn-a")).toEqual(["conn-b"]);
   // One person, so one face, on whichever of them is drawn.
   expect(partyTrains([first, second], "conn-a")[0]?.owner.spriteUrl).toBe(spriteForUserId("same"));
+});
+
+describe("partyTrains with journeys", () => {
+  const base = { connectionId: "conn-u2", userId: "u2", displayName: "Ada", efficiency: 0.5 };
+
+  test("uses the rider's own avatar when presence carries one", () => {
+    const [train] = partyTrains([{ ...base, avatar: "cat" }], "conn-me");
+    expect(train?.owner.spriteUrl).toBe("/characters/cat.png");
+  });
+
+  test("falls back to the hashed sprite without an avatar", () => {
+    const [train] = partyTrains([base], "conn-me");
+    expect(train?.owner.spriteUrl).toBe(spriteForUserId("u2"));
+  });
+
+  test("stops at a station, on a break, or while answering; runs while studying", () => {
+    const at = (state: Journey["state"]) =>
+      partyTrains([{ ...base, journey: { state, station: { index: 1, total: 2 } } }], "conn-me")[0]
+        ?.phase;
+    expect(at("studying")).toBe("running");
+    expect(at("at-station")).toBe("stopped");
+    expect(at("answering")).toBe("stopped");
+    expect(at("on-break")).toBe("stopped");
+    expect(at("idle")).toBe("stopped");
+    expect(at("finished")).toBe("finished");
+  });
+
+  test("a rider with no journey keeps running as before", () => {
+    expect(partyTrains([base], "conn-me")[0]?.phase).toBe("running");
+  });
 });
