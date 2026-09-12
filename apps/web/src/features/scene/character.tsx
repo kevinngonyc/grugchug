@@ -1,7 +1,8 @@
 import { Billboard, useCursor, useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useRef, useState } from "react";
-import { type Group, SRGBColorSpace, Vector3 } from "three";
+import { type Group, type Mesh, SRGBColorSpace, Vector3 } from "three";
+import { useConductorUi } from "@/features/conductor";
 import { useWorld } from "@/features/world";
 import {
   BOB_AMPLITUDE,
@@ -9,59 +10,81 @@ import {
   BOB_FREQUENCY,
   CHARACTER_OFFSET,
   CHARACTER_SIZE,
+  HOVER_SCALE,
+  IDLE_BOB_FRACTION,
+  IDLE_BOB_FREQUENCY,
 } from "./constants";
 import { SpeechBubble } from "./speech-bubble";
+import { StationTimerLabel } from "./station-timer-label";
 import { updateVoicePosition } from "./voice-audio";
 
 type CharacterProps = {
   url: string;
   position?: [number, number, number];
-  // When set, this sprite speaks for that train: it bobs and shows a bubble
-  // while the train has speech.
+  // When set, this sprite speaks for that train: it bobs harder and shows a
+  // bubble while the train has speech.
   trainId?: string;
   // When set, the sprite is clickable and shows a pointer cursor on hover —
   // the conductor uses this to open its panel. Unset for every other sprite.
   onClick?: () => void;
+  // Local conductor only: live study countdown above the sprite.
+  showTimer?: boolean;
 };
 
 // A hand-drawn 2D sprite that always faces the camera. Any PNG or SVG with
 // width/height attributes works; swap the URL, not the code.
-export function Character({ url, position = CHARACTER_OFFSET, trainId, onClick }: CharacterProps) {
+export function Character({
+  url,
+  position = CHARACTER_OFFSET,
+  trainId,
+  onClick,
+  showTimer,
+}: CharacterProps) {
   const speech = useWorld((s) => (trainId === undefined ? undefined : s.trains[trainId]?.speech));
+  // Zoomed in, the conductor is the subject of the shot rather than a thing
+  // to discover: no pointer, no grow.
+  const zoomed = useConductorUi((s) => s.open);
   const [hovered, setHovered] = useState(false);
-  useCursor(hovered);
+  const hoverable = onClick !== undefined && !zoomed;
+  useCursor(hovered && hoverable);
   const texture = useTexture(url);
   // useTexture caches one Texture per URL, so this mutates a shared object on
   // every render. Safe only because the value is a constant; keep it that way.
   texture.colorSpace = SRGBColorSpace;
 
   const bob = useRef<Group>(null);
+  const sprite = useRef<Mesh>(null);
   const voicePosition = useRef(new Vector3());
-  // Amplitude eases toward 1 while speaking and back to 0 after; the phase
-  // only advances while there is amplitude, so the sprite settles instead of
-  // snapping and every line starts from rest.
-  const amplitude = useRef(0);
-  const phase = useRef(0);
+  // Amplitude eases toward 1 while speaking and back to the idle fraction
+  // after, so a line starts and settles instead of snapping. The phase always
+  // advances — a still sprite reads as a frozen one — and starts somewhere
+  // random so two characters never bob in lockstep.
+  const amplitude = useRef(IDLE_BOB_FRACTION);
+  const phase = useRef(Math.random() * Math.PI * 2);
+  const scale = useRef(1);
 
   useFrame((_, dt) => {
-    if (trainId === undefined) return;
     const step = Math.min(dt, 0.1);
-    const speaking = useWorld.getState().trains[trainId]?.speech !== undefined;
-    const target = speaking ? 1 : 0;
-    amplitude.current += (target - amplitude.current) * Math.min(1, BOB_EASE * step);
-    if (amplitude.current < 0.001) {
-      amplitude.current = 0;
-      phase.current = 0;
-    } else {
-      phase.current += BOB_FREQUENCY * step;
-    }
+    const speaking =
+      trainId !== undefined && useWorld.getState().trains[trainId]?.speech !== undefined;
+    const ease = Math.min(1, BOB_EASE * step);
+
+    amplitude.current += ((speaking ? 1 : IDLE_BOB_FRACTION) - amplitude.current) * ease;
+    phase.current += (speaking ? BOB_FREQUENCY : IDLE_BOB_FREQUENCY) * step;
+
     if (bob.current) {
       // Bounce above the resting point, never down through the cab roof.
       bob.current.position.y =
         (amplitude.current * BOB_AMPLITUDE * (1 - Math.cos(phase.current))) / 2;
-      bob.current.getWorldPosition(voicePosition.current);
-      updateVoicePosition(trainId, voicePosition.current);
+      if (trainId !== undefined) {
+        bob.current.getWorldPosition(voicePosition.current);
+        updateVoicePosition(trainId, voicePosition.current);
+      }
     }
+
+    const targetScale = hovered && hoverable ? HOVER_SCALE : 1;
+    scale.current += (targetScale - scale.current) * ease;
+    sprite.current?.scale.setScalar(scale.current);
   });
 
   return (
@@ -70,6 +93,7 @@ export function Character({ url, position = CHARACTER_OFFSET, trainId, onClick }
         <Billboard>
           {/* biome-ignore lint/a11y/noStaticElementInteractions: this is a react-three-fiber <mesh>, a 3D object in the Canvas, not an HTML element */}
           <mesh
+            ref={sprite}
             onClick={onClick}
             onPointerOver={onClick ? () => setHovered(true) : undefined}
             onPointerOut={onClick ? () => setHovered(false) : undefined}
@@ -79,6 +103,7 @@ export function Character({ url, position = CHARACTER_OFFSET, trainId, onClick }
           </mesh>
         </Billboard>
         {speech ? <SpeechBubble key={speech.id} text={speech.text} /> : null}
+        {showTimer ? <StationTimerLabel /> : null}
       </group>
     </group>
   );

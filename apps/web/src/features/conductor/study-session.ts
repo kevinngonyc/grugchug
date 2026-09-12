@@ -17,7 +17,9 @@ import type {
 } from "@grugchug/shared";
 import { create } from "zustand";
 import { useWorld } from "@/features/world";
-import { evaluateProgress, getPlan, setTimer, submitAnswer } from "./api";
+import { getUserId } from "@/lib/user-id";
+import { createPlan, evaluateProgress, getPlan, setTimer, submitAnswer } from "./api";
+import { useMaterialLibrary } from "./material-library";
 import { clearSession, readSession, writeSession } from "./session-storage";
 import { useConductorUi } from "./store";
 
@@ -43,7 +45,8 @@ interface StudySessionState {
   error: string | null;
 
   hydrate: () => Promise<void>;
-  setPlan: (plan: PublicRoutePlan) => void;
+  startSession: (plan: PublicRoutePlan) => void;
+  studyAll: () => Promise<void>;
   startStudying: () => Promise<void>;
   tick: () => void;
   chooseAnswer: () => void;
@@ -115,7 +118,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     }
   },
 
-  setPlan: (plan) => {
+  startSession: (plan) => {
     set({
       plan,
       stationIndex: 0,
@@ -126,9 +129,37 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       answers: {},
       results: {},
       stationFeedback: null,
+      busy: false,
       error: null,
     });
     persist(get());
+  },
+
+  // One route over everything in the library. A route already built from this
+  // exact set is refetched by id rather than regenerated (never trusted
+  // stale); if it is gone — expired, deleted server-side — fall back to
+  // generating instead of showing an error the learner can't act on.
+  studyAll: async () => {
+    const library = useMaterialLibrary.getState();
+    if (library.items.length === 0) return;
+
+    set({ busy: true, error: null });
+    try {
+      let plan: PublicRoutePlan | null = null;
+      if (library.planId) {
+        plan = await getPlan(library.planId).catch(() => null);
+      }
+      if (!plan) {
+        plan = await createPlan({
+          userId: getUserId(),
+          materials: library.items.map((item) => item.material),
+        });
+        useMaterialLibrary.getState().setPlanId(plan.id);
+      }
+      get().startSession(plan);
+    } catch {
+      set({ busy: false, error: "Could not build a route from your materials. Try again." });
+    }
   },
 
   startStudying: async () => {

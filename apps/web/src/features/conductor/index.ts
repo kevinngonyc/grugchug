@@ -9,3 +9,4 @@
 
 export { ConductorOverlay } from "./conductor-overlay";
 export { useConductorUi } from "./store";
+export { useStudySession } from "./study-session";

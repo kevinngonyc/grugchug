@@ -18,6 +18,7 @@ mock.module("./api", () => apiMocks);
 
 const { useStudySession } = await import("./study-session");
 const { useConductorUi } = await import("./store");
+const { useMaterialLibrary } = await import("./material-library");
 
 const plan = {
   id: "plan-1",
@@ -59,6 +60,8 @@ beforeEach(() => {
   });
   useWorld.getState().setLocalTrainId("local");
   useConductorUi.setState({ open: true });
+  useMaterialLibrary.setState({ items: [], planId: null });
+  localStorage.removeItem("grugchug.conductor.library");
   useStudySession.setState({
     plan: null,
     stationIndex: 0,
@@ -74,9 +77,9 @@ beforeEach(() => {
   });
 });
 
-describe("setPlan", () => {
+describe("startSession", () => {
   test("resets to station 0 in idle mode", () => {
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     const s = useStudySession.getState();
     expect(s.plan).toBe(plan);
     expect(s.stationIndex).toBe(0);
@@ -84,10 +87,75 @@ describe("setPlan", () => {
   });
 });
 
+describe("studyAll", () => {
+  function addTwoMaterials() {
+    useMaterialLibrary.getState().add("one.pdf", { kind: "text", text: "lecture one" });
+    useMaterialLibrary.getState().add("two.pdf", { kind: "text", text: "lecture two" });
+  }
+
+  test("builds one route from every uploaded material and remembers it", async () => {
+    apiMocks.createPlan.mockResolvedValue(plan);
+    addTwoMaterials();
+
+    await useStudySession.getState().studyAll();
+
+    expect(apiMocks.createPlan).toHaveBeenCalledTimes(1);
+    expect(apiMocks.createPlan.mock.calls[0]?.[0].materials).toEqual([
+      { kind: "text", text: "lecture one" },
+      { kind: "text", text: "lecture two" },
+    ]);
+    expect(useStudySession.getState().plan).toBe(plan);
+    expect(useMaterialLibrary.getState().planId).toBe(plan.id);
+  });
+
+  test("reuses the route already built from this set instead of generating a new one", async () => {
+    apiMocks.getPlan.mockResolvedValue(plan);
+    addTwoMaterials();
+    useMaterialLibrary.getState().setPlanId("plan-1");
+
+    await useStudySession.getState().studyAll();
+
+    expect(apiMocks.getPlan).toHaveBeenCalledWith("plan-1");
+    expect(apiMocks.createPlan).not.toHaveBeenCalled();
+    expect(useStudySession.getState().plan).toBe(plan);
+  });
+
+  test("falls back to generating when the remembered route can't be fetched", async () => {
+    apiMocks.getPlan.mockRejectedValue(new Error("404"));
+    apiMocks.createPlan.mockResolvedValue(plan);
+    addTwoMaterials();
+    useMaterialLibrary.getState().setPlanId("gone");
+
+    await useStudySession.getState().studyAll();
+
+    expect(apiMocks.createPlan).toHaveBeenCalledTimes(1);
+    expect(useStudySession.getState().plan).toBe(plan);
+    expect(useStudySession.getState().error).toBeNull();
+  });
+
+  test("does nothing with an empty library", async () => {
+    await useStudySession.getState().studyAll();
+
+    expect(apiMocks.createPlan).not.toHaveBeenCalled();
+    expect(useStudySession.getState().plan).toBeNull();
+  });
+
+  test("surfaces an error when the route cannot be built", async () => {
+    apiMocks.createPlan.mockRejectedValue(new Error("network down"));
+    addTwoMaterials();
+
+    await useStudySession.getState().studyAll();
+
+    expect(useStudySession.getState().plan).toBeNull();
+    expect(useStudySession.getState().error).toBeTruthy();
+    expect(useStudySession.getState().busy).toBe(false);
+  });
+});
+
 describe("startStudying", () => {
   test("starts a countdown from the model's suggested minutes and closes the panel", async () => {
     apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Let's go" });
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
 
     await useStudySession.getState().startStudying();
 
@@ -101,7 +169,7 @@ describe("startStudying", () => {
 
   test("surfaces an error and does not change mode when the call fails", async () => {
     apiMocks.setTimer.mockRejectedValue(new Error("network down"));
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
 
     await useStudySession.getState().startStudying();
 
@@ -113,7 +181,7 @@ describe("startStudying", () => {
 
 describe("tick", () => {
   test("stops the train and moves to at-station once a study countdown elapses", () => {
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() - 1 });
 
     useStudySession.getState().tick();
@@ -123,7 +191,7 @@ describe("tick", () => {
   });
 
   test("returns to at-station without touching train phase once a break elapses", () => {
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "on-break", timerEndsAt: Date.now() - 1 });
 
     useStudySession.getState().tick();
@@ -133,7 +201,7 @@ describe("tick", () => {
   });
 
   test("does nothing before the timer has elapsed", () => {
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() + 60_000 });
 
     useStudySession.getState().tick();
@@ -158,7 +226,7 @@ describe("submitAllAndFinish", () => {
     apiMocks.evaluateProgress.mockResolvedValue({ passed: true, feedback: "Great work." });
     apiMocks.setTimer.mockResolvedValue({ minutes: 8, message: "Next up" });
 
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "answering" });
     answerEverything();
 
@@ -179,7 +247,7 @@ describe("submitAllAndFinish", () => {
     });
     apiMocks.evaluateProgress.mockResolvedValue({ passed: false, feedback: "Try again." });
 
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "answering" });
     answerEverything();
 
@@ -200,7 +268,7 @@ describe("submitAllAndFinish", () => {
     });
     apiMocks.evaluateProgress.mockResolvedValue({ passed: true, feedback: "All done." });
 
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useStudySession.setState({ stationIndex: 1, mode: "answering" });
     useStudySession.getState().setAnswer("q3", { type: "mcq", choiceIndex: 0 });
 
@@ -211,7 +279,7 @@ describe("submitAllAndFinish", () => {
   });
 
   test("refuses to submit until every question has an answer", async () => {
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useStudySession.setState({ mode: "answering" });
     useStudySession.getState().setAnswer("q1", { type: "mcq", choiceIndex: 0 }); // q2 left blank
 
@@ -224,7 +292,7 @@ describe("submitAllAndFinish", () => {
 
 describe("quit", () => {
   test("clears the session and resumes a train left stopped at a station", () => {
-    useStudySession.getState().setPlan(plan);
+    useStudySession.getState().startSession(plan);
     useWorld.getState().setPhase("local", "stopped");
     useStudySession.setState({ mode: "at-station" });
 
