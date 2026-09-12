@@ -5,6 +5,7 @@
 // top of the chat if you want a different one.
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { getUserId } from "@/lib/user-id";
 import { joinRoom } from "./api";
 import { defaultDisplayName, identityFromMember, readIdentity, writeIdentity } from "./identity";
 import { cardClass } from "./ui";
@@ -24,7 +25,7 @@ export function JoinRoomView({ inviteCode }: JoinRoomViewProps) {
     joinRoom({
       inviteCode,
       displayName: stored?.displayName ?? defaultDisplayName(),
-      userId: stored?.userId ?? null,
+      userId: stored?.userId ?? getUserId(),
     })
       .then((response) => {
         if (cancelled) return;

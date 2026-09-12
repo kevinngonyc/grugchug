@@ -4,6 +4,7 @@
 // someone else's.
 import type { ChatRoom } from "@grugchug/shared";
 import { useCallback, useEffect, useState } from "react";
+import { getUserId } from "@/lib/user-id";
 import { myRoom } from "./api";
 import {
   type ChatIdentity,
@@ -33,7 +34,7 @@ export function useMyRoom(): MyRoomState {
 
     myRoom({
       displayName: stored?.displayName ?? defaultDisplayName(),
-      userId: stored?.userId ?? null,
+      userId: stored?.userId ?? getUserId(),
     })
       .then((response) => {
         if (cancelled) return;

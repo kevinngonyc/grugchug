@@ -19,23 +19,29 @@ production the two deploy separately.
 | `src/routes/` | One file per page: dashboard, session, settings, the invite landing page (which joins and redirects), and redirects from the old `/chat` links into the session |
 | `src/features/gaze/` | Webcam eye tracking: calibration, gaze estimates, attention metrics. Emits `GazeSample` |
 | `src/features/typing/` | Keystroke timing and corrections, never key contents. Emits `TypingSample` |
-| `src/features/world/` | zustand store of trains, owners, phases, efficiency; command API every driver uses. No three.js; commands include setLocalTrainId and regroup |
-| `src/features/scene/` | react-three-fiber rendering of the world store: one scrolling lane per train, stations, scenery, sprites. Never writes the store |
+| `src/features/world/` | zustand store of trains, phases, efficiency; command API every driver uses. No three.js; commands include setLocalTrainId and regroup |
+| `src/features/speech/` | Conductor speech drivers: the player watches `world` for new utterances, plays the clip or a text-length fallback, then `clearSpeech`; the departure announcer says the start-of-session line when the local train departs. `lines.ts` is the voice-line registry; the scene supplies a positional audio output |
+| `src/features/profile/` | Who this browser is: the user record from `/api/users` (name, avatar), the avatar catalog, and the picker |
+| `src/features/scene/` | react-three-fiber rendering of the world store: one lane per train, all scrolling with the local train's motion; stations on the local lane, scenery, a conductor and a passenger sprite per train, and a speech bubble plus bob on the conductor while its train has `speech`. Never writes the store; supplies camera/conductor positions and a quiet spatial voice output |
 | `src/features/efficiency/` | The study efficiency score: 0..100, a weighted blend of whatever is reporting. Pure scoring in `score.ts`, attention averaging in `attention.ts`, one zustand store |
-| `src/features/session/` | Starts and stops a session, gathers samples from gaze and typing, sends them to the API. The only writer into the world: the score becomes the local train's efficiency, and the chat roster becomes the trains in the lanes beside it |
+| `src/features/session/` | Starts and stops a session, gathers samples from gaze and typing, sends them to the API. Drives train state alongside the speech driver: the score becomes the local train's efficiency, and the chat roster becomes the trains in the lanes beside it |
 | `src/features/chat/` | The one room you are in, live messages over a WebSocket, history from the API, and the roster of who is connected. Drawn as an overlay inside the session, not as a page; owns its own identity in `localStorage` |
 | `src/components/ui/` | shadcn components |
 | `src/components/` | App-level shared components |
 | `src/lib/` | Utilities, including shadcn's `cn` |
+| `src/lib/user-id.ts` | The browser's user id, minted once into localStorage. Shared by `profile` and `chat` |
 | `src/styles/index.css` | Tailwind import, theme tokens, shadcn variables |
 | `public/models/` | `.glb` assets for the scene plus the Train Kit texture atlas they reference |
+| `public/characters/`, `public/audio/` | Character PNGs and conductor voice clips |
 
 Data flows one way: `gaze` and `typing` produce samples, those samples become
 signals in `efficiency`, `session` collects and persists them and drives
 `world` commands from the score, `scene` renders `world`.
 `world` is pure TypeScript, so anything can drive it without WebGL: the
 session timer, a tracking score, an agent tool call routed through the API,
-or a multiplayer sync calling `applySnapshot`.
+a multiplayer sync calling `applySnapshot`, or `speech` saying a line and
+clearing it when the clip ends. `profile` feeds the local train's owner into
+`world`.
 
 `chat` sits beside that flow rather than in it, and still reads nothing from
 the rest of the app. Two threads cross the boundary, both driven from
@@ -45,7 +51,7 @@ the rest of the app. Two threads cross the boundary, both driven from
   local train, and the open socket carries the number to the room. `chat`
   throttles it and otherwise treats it as an opaque value.
 - `session` reads `chat`'s `useRoster()` and turns it into trains
-  (`use-party-trains.ts`), so `world` still has exactly one writer.
+  (`use-party-trains.ts`), so chat never writes `world` directly.
 
 `ChatOverlay` is chat's only visible surface: a bubble in the corner of the
 session that opens a panel over the scene. There is nothing to route to and
@@ -66,6 +72,8 @@ server.
 | `src/chat/ids.ts` | Room ids, invite codes, and the placeholder user id |
 | `src/chat/rate-limit.ts` | Per-connection token bucket |
 | `src/db.ts` | Lazy MongoDB connection from `MONGODB_URI` |
+| `src/routes/users.ts` | `GET`/`PUT /api/users/:id`: read and upsert a browser-identified user's name and avatar |
+| `src/users-repo.ts` | `UserRepo` interface; Mongo implementation over the `users` collection and an in-memory one for tests |
 | `src/routes/conductor.ts` | Conductor endpoints: create/get a route plan, grade answers, ask |
 | `src/conductor/` | Turns study material into a route of stations with questions. `fixtures.ts` is the fallback route |
 
@@ -76,7 +84,7 @@ the database.
 
 | Schema | Meaning |
 |---|---|
-| `user` | Account identity |
+| `user` | Browser-identified user: `id`, `name`, `avatar` (`AvatarId`), `createdAt`; `userProfile` is the PUT body |
 | `session` | One study sitting, start to stop |
 | `gazeSample` | A gaze estimate at time `t`, viewport-normalized `x, y`, `onScreen` |
 | `typingSample` | A keystroke at time `t` and whether it was a correction |
@@ -85,6 +93,8 @@ the database.
 | `chatPresenceMember` | Someone connected right now: who they are and their 0..1 study score. Never stored |
 | `chatMessage` | One message, with the sender's display name denormalized onto it |
 | `clientChatEvent` / `serverChatEvent` | The WebSocket wire protocol, as discriminated unions |
+| `train` | `TrainPhase`, `TrainState` (id, owner, phase, efficiency, lane, optional `speech`), `Speech`, `WorldSnapshot` |
+| `conductor` | `RoutePlan` of `Station`s with `Question`s, answer and ask bodies. `public*` variants strip answer keys for the browser |
 
 ## Chat
 
@@ -136,8 +146,6 @@ and membership is checked before the upgrade; everything after that trusts
 `ws.data`. A sender's own message comes back with their `clientId` attached so
 the optimistic bubble is replaced rather than duplicated; everyone else's copy
 carries `null`.
-| `train` | `TrainPhase`, `TrainState` (id, owner, phase, efficiency, lane), `WorldSnapshot` |
-| `conductor` | `RoutePlan` of `Station`s with `Question`s, answer and ask bodies. `public*` variants strip answer keys for the browser |
 
 ## Efficiency
 
@@ -166,7 +174,7 @@ never does. `null` means it counts until someone drops it.
 Readers take the number and nothing else — `efficiencyScore()` outside React,
 `useEfficiency((s) => s.score)` inside it, `efficiencyFraction()` for the 0..1
 form a train wants. `features/session/use-efficiency-drive.ts` is the only
-writer into `world`; it ticks twice a second, which is also what ages the
+writer of local train efficiency; it ticks twice a second, which is also what ages the
 signals. Nothing reads back out of `world` to get the score.
 
 The local train is created `running` and stays running: the score sets its
@@ -191,4 +199,6 @@ can cross the wire when sessions are persisted or friends' trains are synced.
   enough for "who is studying with me" but is not a world sync — nobody's
   phase, station or scroll position crosses the wire, and `applySnapshot` is
   still unused.
-- Conductor sprite: `apps/web/public/characters/conductor.png` is committed but unplaced. Once the Gemini conductor agent exists it can stand on the platform or ride the cab via the same `Character` component.
+- Voice clips: `say(trainId, text, audioUrl)` plays whatever URL it is given. Five clips ship in `public/audio/`; only the start-of-session line is wired up, and its caption in `features/speech/lines.ts` is a placeholder until the transcript is pasted in. Generating clips belongs to the conductor agent pipeline, which does not yet call `say`.
+- Speech across clients: each client's speech player clears lines locally. A snapshot that re-delivers a friend's finished line puts its bubble back until the friend's clear propagates. Multiplayer spec.
+- One identity: `lib/user-id` is used by profile always and by chat only on a first create or join. A browser that chatted before this landed keeps its older chat id alongside the new profile id until real auth replaces both.

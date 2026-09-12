@@ -1,4 +1,4 @@
-import type { TrainOwner, TrainPhase, TrainState, WorldSnapshot } from "@grugchug/shared";
+import type { Speech, TrainOwner, TrainPhase, TrainState, WorldSnapshot } from "@grugchug/shared";
 import { create } from "zustand";
 
 export type WorldState = {
@@ -18,6 +18,8 @@ export type WorldState = {
   setOwner: (id: string, owner: TrainOwner) => void;
   setPhase: (id: string, phase: TrainPhase) => void;
   setEfficiency: (id: string, efficiency: number) => void;
+  say: (id: string, text: string, audioUrl?: string) => void;
+  clearSpeech: (id: string, speechId: string) => void;
   applySnapshot: (snapshot: Pick<WorldSnapshot, "trains">) => void;
 };
 
@@ -54,6 +56,23 @@ export const useWorld = create<WorldState>()((set) => ({
         efficiency: Math.min(1, Math.max(0, efficiency)),
       }),
     ),
+
+  // One utterance per train. A new line replaces whatever was up.
+  say: (id, text, audioUrl) =>
+    set((s) => {
+      const speech: Speech = { id: crypto.randomUUID(), text, audioUrl };
+      return patchTrain(s, id, { speech });
+    }),
+
+  // Only the utterance that finished may clear itself; a newer line stays.
+  clearSpeech: (id, speechId) =>
+    set((s) => {
+      const train = s.trains[id];
+      if (!train || train.speech?.id !== speechId) return {};
+      const cleared: TrainState = { ...train };
+      delete cleared.speech;
+      return { trains: { ...s.trains, [id]: cleared } };
+    }),
 
   // Remote state wins for every train except ours; trains missing from the
   // snapshot are gone.

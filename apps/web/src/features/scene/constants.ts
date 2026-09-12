@@ -6,9 +6,8 @@
 // if the locomotive turns out to face backwards.
 export const KIT_ROTATION_Y = Math.PI / 2;
 
-// Parallel lanes keep the locomotives abreast.
+// Lanes sit one behind another, further from the camera, with the trains abreast.
 export const LANE_SPACING = 4; // metres deeper into the screen per lane
-export const LANE_STAGGER = 0; // no longitudinal offset between trains
 
 // Nothing caps how far ahead or behind a friend's train may get: everyone
 // shares one scrolling world, so a difference in focus is a gap along the
@@ -81,6 +80,23 @@ export const CONDUCTOR_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIG
 export const CONDUCTOR_SPRITE_URL = "/characters/conductor.png";
 export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
 
+// Speech. The bubble's tail sits this far above the sprite's centre. drei
+// scales the bubble by BUBBLE_DISTANCE_FACTOR / (2 * tan(fov/2) * distance);
+// with the closer camera this keeps the bubble readable locally and a
+// little smaller on farther lanes. Tune by eye in the dev panel.
+export const BUBBLE_OFFSET: [number, number, number] = [0, CHARACTER_SIZE[1] / 2 + 0.15, 0];
+export const BUBBLE_DISTANCE_FACTOR = 8;
+// The conductor bobs while its train has speech.
+export const BOB_AMPLITUDE = 0.1; // metres
+export const BOB_FREQUENCY = 9; // radians per second, about 1.4 bobs a second
+export const BOB_EASE = 6; // per second; how quickly the bob fades in and out
+
+// Voice level and distance falloff, in the same metres as the scene.
+export const VOICE_GAIN = 0.35;
+export const VOICE_REF_DISTANCE = 10;
+export const VOICE_ROLLOFF = 1.2;
+export const VOICE_RESUME_TIMEOUT_MS = 1000;
+
 // Drift marker: an arrowhead that rides the edge of the picture once a
 // friend's train has left it. Height clears the conductor sprite, which tops
 // out around LOCOMOTIVE_HEIGHT + 1.2.
@@ -95,8 +111,8 @@ export const DRIFT_MARKER_EDGE_MARGIN = 0.9;
 export const DRIFT_AHEAD_COLOR = "#15803d"; // pulling away up front
 export const DRIFT_BEHIND_COLOR = "#b45309"; // dropping off the back
 
-// Camera
-export const CAMERA_POSITION: [number, number, number] = [-1.4, 5, -12];
+// Camera: moved along the same viewing direction for a closer train view.
+export const CAMERA_POSITION: [number, number, number] = [-1.4, 4.4, -10];
 export const CAMERA_LOOK_AT: [number, number, number] = [-1.4, 1.2, 1];
 export const CAMERA_FOV = 35;
 

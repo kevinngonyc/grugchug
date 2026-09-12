@@ -15,6 +15,7 @@ import { Lane } from "./lane";
 import { ALL_MODEL_URLS } from "./models";
 import { createMotion, registerMotion, stepMotion, unregisterMotion } from "./motion";
 import { useRegroup } from "./use-regroup";
+import { VoiceListener } from "./voice-listener";
 
 for (const url of ALL_MODEL_URLS) useGLTF.preload(url);
 
@@ -25,10 +26,11 @@ export function TrainWorld() {
       onCreated={({ camera }) => camera.lookAt(...CAMERA_LOOK_AT)}
       dpr={[1, 1.5]}
     >
+      <VoiceListener />
       <color attach="background" args={[SKY_COLOR]} />
       <fog attach="fog" args={[SKY_COLOR, 30, 70]} />
       <ambientLight intensity={0.8} />
-      <directionalLight position={[10, 15, 10]} intensity={1.4} />
+      <directionalLight position={[10, 15, -10]} intensity={1.4} />
       <Suspense fallback={null}>
         <TravellingWorld />
       </Suspense>
@@ -37,7 +39,7 @@ export function TrainWorld() {
 }
 
 // All lanes share the local train's travel so rails and scenery never slide
-// against each other. Friends stay alongside regardless of efficiency.
+// against each other. Friend trains move relative to this shared world.
 function TravellingWorld() {
   const trainIds = useWorld(useShallow((s) => Object.keys(s.trains)));
   const leaderId = useWorld((s) => s.localTrainId ?? Object.keys(s.trains)[0]);
