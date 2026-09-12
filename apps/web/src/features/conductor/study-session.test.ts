@@ -290,6 +290,37 @@ describe("submitAllAndFinish", () => {
   });
 });
 
+describe("skipTimer", () => {
+  test("ends a study countdown now: the train stops and the station is up", () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() + 25 * 60_000 });
+
+    useStudySession.getState().skipTimer();
+
+    expect(useStudySession.getState().mode).toBe("at-station");
+    expect(useStudySession.getState().timerEndsAt).toBeNull();
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+  });
+
+  test("ends a break early back at the station", () => {
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "on-break", timerEndsAt: Date.now() + 5 * 60_000 });
+
+    useStudySession.getState().skipTimer();
+
+    expect(useStudySession.getState().mode).toBe("at-station");
+  });
+
+  test("does nothing when no countdown is running", () => {
+    useStudySession.getState().startSession(plan);
+
+    useStudySession.getState().skipTimer();
+
+    expect(useStudySession.getState().mode).toBe("idle");
+    expect(useWorld.getState().trains.local?.phase).toBe("running");
+  });
+});
+
 describe("quit", () => {
   test("clears the session and resumes a train left stopped at a station", () => {
     useStudySession.getState().startSession(plan);

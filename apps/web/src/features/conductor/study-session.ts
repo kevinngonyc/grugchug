@@ -49,6 +49,7 @@ interface StudySessionState {
   studyAll: () => Promise<void>;
   startStudying: () => Promise<void>;
   tick: () => void;
+  skipTimer: () => void;
   chooseAnswer: () => void;
   chooseKeepStudying: () => Promise<void>;
   chooseBreak: () => Promise<void>;
@@ -200,6 +201,16 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
       persist(get());
     }
+  },
+
+  // Dev panel only: end the running countdown now instead of in however many
+  // real minutes the model chose, through the same tick a timer that ran out
+  // takes — so a station and its quiz can be tried without waiting one out.
+  skipTimer: () => {
+    const { mode } = get();
+    if (mode !== "counting" && mode !== "on-break") return;
+    set({ timerEndsAt: Date.now() });
+    get().tick();
   },
 
   chooseAnswer: () => {
