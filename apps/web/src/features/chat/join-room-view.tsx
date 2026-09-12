@@ -1,6 +1,7 @@
 import { DISPLAY_NAME_MAX_LENGTH } from "@grugchug/shared";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { getUserId } from "@/lib/user-id";
 import { writeActiveRoomId } from "./active-room";
 import { joinRoom } from "./api";
 import { identityFromMember, readIdentity, writeIdentity } from "./identity";
@@ -25,7 +26,7 @@ export function JoinRoomView({ inviteCode }: JoinRoomViewProps) {
       const response = await joinRoom({
         inviteCode,
         displayName,
-        userId: identity?.userId ?? null,
+        userId: identity?.userId ?? getUserId(),
       });
       writeIdentity(identityFromMember(response.member));
       // The room opens in the session overlay; there is no page of its own.

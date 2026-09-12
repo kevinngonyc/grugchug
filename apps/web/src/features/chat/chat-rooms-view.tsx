@@ -7,6 +7,7 @@ import {
   ROOM_NAME_MAX_LENGTH,
 } from "@grugchug/shared";
 import { useEffect, useState } from "react";
+import { getUserId } from "@/lib/user-id";
 import { createRoom, joinRoom, listRooms } from "./api";
 import { type ChatIdentity, identityFromMember, readIdentity, writeIdentity } from "./identity";
 import { buttonClass, inputClass, labelClass } from "./ui";
@@ -56,7 +57,7 @@ export function ChatRoomsView({ onOpenRoom }: ChatRoomsViewProps) {
       const response = await createRoom({
         name: roomName,
         displayName,
-        userId: identity?.userId ?? null,
+        userId: identity?.userId ?? getUserId(),
       });
       setIdentity(writeIdentity(identityFromMember(response.member)));
       setRoomName("");
@@ -69,7 +70,7 @@ export function ChatRoomsView({ onOpenRoom }: ChatRoomsViewProps) {
       const response = await joinRoom({
         inviteCode,
         displayName,
-        userId: identity?.userId ?? null,
+        userId: identity?.userId ?? getUserId(),
       });
       setIdentity(writeIdentity(identityFromMember(response.member)));
       setInviteCode("");
