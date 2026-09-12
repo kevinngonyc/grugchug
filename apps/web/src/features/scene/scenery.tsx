@@ -30,7 +30,7 @@ function makeSlots(): Slot[] {
     id: `slot-${i}`,
     model: Math.floor(Math.random() * MODELS.scenery.length),
     worldX: -VISIBLE_HALF_WIDTH + Math.random() * RECYCLE_SPAN,
-    z: -(SCENERY_MIN_DEPTH + Math.random() * (SCENERY_MAX_DEPTH - SCENERY_MIN_DEPTH)),
+    z: SCENERY_MIN_DEPTH + Math.random() * (SCENERY_MAX_DEPTH - SCENERY_MIN_DEPTH),
     yaw: Math.random() * Math.PI * 2,
     hidden: false,
   }));

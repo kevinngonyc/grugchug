@@ -4,7 +4,14 @@ import { type RefObject, Suspense, useEffect, useRef } from "react";
 import type { Group, Object3D } from "three";
 import { useWorld } from "@/features/world";
 import { Character } from "./character";
-import { CARRIAGE_GAP, KIT_ROTATION_Y, TRAIN_Y, WHEEL_RADIUS } from "./constants";
+import {
+  CARRIAGE_GAP,
+  CONDUCTOR_OFFSET,
+  CONDUCTOR_SPRITE_URL,
+  KIT_ROTATION_Y,
+  TRAIN_Y,
+  WHEEL_RADIUS,
+} from "./constants";
 import { MODELS } from "./models";
 import type { LaneMotion } from "./motion";
 import { Smoke } from "./smoke";
@@ -12,8 +19,8 @@ import { Smoke } from "./smoke";
 type TrainProps = { trainId: string; motion: RefObject<LaneMotion> };
 
 // Locomotive at the lane origin, one carriage behind it. Faces +x. Wheel
-// nodes in the Kenney models are named "wheel" or "wheels-*"; they spin about
-// their local x, the axle.
+// Individual wheel nodes spin about local x. The wheels-* meshes contain
+// multiple axles and must stay fixed or the entire bogie tumbles.
 export function Train({ trainId, motion }: TrainProps) {
   const spriteUrl = useWorld((s) => s.trains[trainId]?.owner.spriteUrl);
   const locomotive = useGLTF(MODELS.locomotive);
@@ -24,7 +31,7 @@ export function Train({ trainId, motion }: TrainProps) {
   useEffect(() => {
     const found: Object3D[] = [];
     root.current?.traverse((o) => {
-      if (o.name.startsWith("wheel")) found.push(o);
+      if (/^wheel(?:_\d+)?$/.test(o.name)) found.push(o);
     });
     wheels.current = found;
   }, []);
@@ -43,6 +50,9 @@ export function Train({ trainId, motion }: TrainProps) {
         <Clone object={carriage.scene} />
       </group>
       <Smoke motion={motion} />
+      <Suspense fallback={null}>
+        <Character url={CONDUCTOR_SPRITE_URL} position={CONDUCTOR_OFFSET} />
+      </Suspense>
       {spriteUrl ? (
         <Suspense fallback={null}>
           <Character url={spriteUrl} />

@@ -6,10 +6,9 @@
 // if the locomotive turns out to face backwards.
 export const KIT_ROTATION_Y = Math.PI / 2;
 
-// Lanes. Each lane is deeper into the screen and shifted forward, so a friend's
-// train peeks out ahead of yours instead of hiding directly behind it.
+// Parallel lanes keep the locomotives abreast.
 export const LANE_SPACING = 4; // metres deeper into the screen per lane
-export const LANE_STAGGER = 3.5; // metres further along the track per lane
+export const LANE_STAGGER = 0; // no longitudinal offset between trains
 
 // Track: railroad-straight.glb is 4 m long with its origin at one end and
 // sits 1 m below its origin (measured), so lifting it by 1 puts rail top at 0.1.
@@ -52,18 +51,21 @@ export const SMOKE_PUFFS = 14;
 export const SMOKE_LIFE = 1.6; // seconds
 export const CHIMNEY_OFFSET: [number, number, number] = [0.9, LOCOMOTIVE_HEIGHT, 0];
 
-// Character sprite rides on the back of the locomotive. Every sprite shares a
+// Users ride in the carriage; conductors ride on the locomotive. Every sprite shares a
 // square canvas and is mapped whole onto a square plane, so how much of the
 // canvas a drawing fills is how big that character is in the world.
-export const CHARACTER_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIGHT + 0.4, 0];
+export const CARRIAGE_HEIGHT = 1.3; // measured top of the cart sides
+export const CHARACTER_OFFSET: [number, number, number] = [-CARRIAGE_GAP, CARRIAGE_HEIGHT + 0.4, 0];
+export const CONDUCTOR_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIGHT + 0.4, 0];
+export const CONDUCTOR_SPRITE_URL = "/characters/conductor.png";
 export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
 
 // Camera
-export const CAMERA_POSITION: [number, number, number] = [0, 5.5, 22];
-export const CAMERA_LOOK_AT: [number, number, number] = [0, 1.2, -LANE_SPACING];
+export const CAMERA_POSITION: [number, number, number] = [-1.4, 5, -12];
+export const CAMERA_LOOK_AT: [number, number, number] = [-1.4, 1.2, 1];
 export const CAMERA_FOV = 35;
 
 // Sky and hills
 export const SKY_COLOR = "#bfe3ff";
-export const HILL_DEPTH = -28;
+export const HILL_DEPTH = 28;
 export const HILL_PARALLAX = 0.15;

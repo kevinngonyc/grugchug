@@ -19,7 +19,7 @@ export function Station({ motion, worldX, terminus }: StationProps) {
 
   const roof = terminus ? "#7f1d1d" : "#b45309";
   return (
-    <group ref={group} position={[worldX, 0, -STATION_DEPTH]}>
+    <group ref={group} position={[worldX, 0, STATION_DEPTH]} scale-z={-1}>
       <mesh position={[0, 0.35, 0]}>
         <boxGeometry args={[9, 0.7, 1.2]} />
         <meshStandardMaterial color="#d6d3d1" />
