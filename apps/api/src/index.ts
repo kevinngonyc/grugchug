@@ -17,9 +17,14 @@ import {
 import { health } from "./routes/health";
 import { createStudySessionRoutes } from "./routes/study-sessions";
 import { createUserRoutes } from "./routes/users";
+import { createStaticHandler, resolveWebDist } from "./static";
 import { sqliteUserRepo } from "./users-repo";
 
 const port = Number(process.env.PORT ?? 3000);
+// Anything that is not an API route is the web app: one process serves both
+// in production, so the browser sees a single origin (see static.ts).
+const webDist = resolveWebDist(process.env.WEB_DIST);
+const serveWeb = createStaticHandler(webDist);
 
 const users = createUserRoutes(sqliteUserRepo(getDatabase()));
 const study = createStudySessionRoutes(getDatabase());
@@ -51,10 +56,9 @@ const server = Bun.serve({
     "/api/chat/rooms/:roomId/messages": { GET: listMessagesRoute },
     "/api/chat/ws": { GET: chatSocketRoute },
   },
-  fetch() {
-    return new Response("Not found", { status: 404 });
-  },
+  fetch: serveWeb,
 });
 
 console.log(`api listening on http://localhost:${server.port}`);
+console.log(`web app served from ${webDist}`);
 console.log(describeLlmConfig());
