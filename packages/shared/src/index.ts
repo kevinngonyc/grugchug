@@ -3,6 +3,7 @@
 
 export * from "./schemas/chat";
 export * from "./schemas/conductor";
+export * from "./schemas/efficiency";
 export * from "./schemas/gaze";
 export * from "./schemas/session";
 export * from "./schemas/train";

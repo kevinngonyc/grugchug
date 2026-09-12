@@ -27,9 +27,10 @@ export const ACCEL = 1.5;
 export const BRAKE_DECEL = 2;
 
 // Stopping: a station appears this far ahead when a stop is requested.
-// Braking distance from MAX_SPEED (8) at BRAKE_DECEL is 16 m, so 20 leaves a
-// short cruise before the brakes bite.
-export const STATION_DISTANCE = 20;
+// Braking distance from MAX_SPEED (12) at BRAKE_DECEL is v²/2a = 36 m, so 40
+// leaves a short cruise before the brakes bite. Keep this above that figure
+// whenever MAX_SPEED changes, or a stop from full speed snaps rather than eases.
+export const STATION_DISTANCE = 40;
 
 // Recycling: anything further than this behind the train jumps forward.
 export const VISIBLE_HALF_WIDTH = 26;

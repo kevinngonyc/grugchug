@@ -22,14 +22,14 @@ export function InvitePanel({ inviteCode }: InvitePanelProps) {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm text-muted-foreground">Invite code</span>
-      <code className="rounded-md bg-muted px-2 py-1 font-mono text-sm tracking-widest">
-        {inviteCode}
-      </code>
-      <button type="button" className={secondaryButtonClass} onClick={() => void copy()}>
-        {copied ? "Copied" : "Copy link"}
-      </button>
-    </div>
+    <button
+      type="button"
+      title="Copy the invite link"
+      aria-label={`Copy the invite link, code ${inviteCode}`}
+      className={`${secondaryButtonClass} bg-background/60 px-2 py-1 font-mono text-xs tracking-widest`}
+      onClick={() => void copy()}
+    >
+      {copied ? "Copied" : inviteCode}
+    </button>
   );
 }
