@@ -74,3 +74,74 @@ describe("useWorld", () => {
     expect(trains.local?.phase).toBe("stopped");
   });
 });
+
+describe("speech commands", () => {
+  test("say sets speech with a fresh id, the text, and the clip", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.say("local", "All aboard!", "/voices/1.mp3");
+    const speech = useWorld.getState().trains.local?.speech;
+    expect(speech?.text).toBe("All aboard!");
+    expect(speech?.audioUrl).toBe("/voices/1.mp3");
+    expect(speech?.id).toBeTruthy();
+  });
+
+  test("say without a clip leaves audioUrl undefined", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.say("local", "Hello");
+    expect(useWorld.getState().trains.local?.speech?.audioUrl).toBeUndefined();
+  });
+
+  test("a new say replaces live speech under a new id", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.say("local", "one");
+    const first = useWorld.getState().trains.local?.speech?.id;
+    w.say("local", "two");
+    const second = useWorld.getState().trains.local?.speech;
+    expect(second?.text).toBe("two");
+    expect(second?.id).not.toBe(first);
+  });
+
+  test("say on an unknown train is a no-op", () => {
+    useWorld.getState().say("ghost", "boo");
+    expect(useWorld.getState().trains).toEqual({});
+  });
+
+  test("clearSpeech removes the matching utterance and nothing else", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.say("local", "one");
+    const id = useWorld.getState().trains.local?.speech?.id ?? "";
+    w.clearSpeech("local", id);
+    expect(useWorld.getState().trains.local).toEqual(local);
+  });
+
+  test("clearSpeech leaves a newer utterance alone", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.say("local", "one");
+    const stale = useWorld.getState().trains.local?.speech?.id ?? "";
+    w.say("local", "two");
+    w.clearSpeech("local", stale);
+    expect(useWorld.getState().trains.local?.speech?.text).toBe("two");
+  });
+
+  test("clearSpeech on an unknown train is a no-op", () => {
+    useWorld.getState().clearSpeech("ghost", "x");
+    expect(useWorld.getState().trains).toEqual({});
+  });
+});
+
+describe("setOwner", () => {
+  test("replaces the owner", () => {
+    const w = useWorld.getState();
+    w.addTrain(local);
+    w.setOwner("local", { name: "Ada", spriteUrl: "/characters/conductor.png" });
+    expect(useWorld.getState().trains.local?.owner).toEqual({
+      name: "Ada",
+      spriteUrl: "/characters/conductor.png",
+    });
+  });
+});
