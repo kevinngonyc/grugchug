@@ -47,10 +47,17 @@ describe("partyTrains", () => {
 });
 
 describe("arrivals", () => {
-  const known = (...ids: string[]) => new Set(ids.map((id) => `conn-${id}`));
+  // Arrivals are people, so `known` holds userIds: a friend whose socket
+  // reconnected is the same person on a new connection, not a newcomer.
+  const known = (...ids: string[]) => new Set(ids);
 
   test("finds the people who were not here last time", () => {
-    expect(arrivals([member("ada"), member("bo")], known("ada"), "conn-me")).toEqual(["conn-bo"]);
+    expect(arrivals([member("ada"), member("bo")], known("ada"), "conn-me")).toEqual(["bo"]);
+  });
+
+  test("a friend whose socket reconnected is the same person, not an arrival", () => {
+    const reconnected = { ...member("ada"), connectionId: "conn-ada-2" };
+    expect(arrivals([reconnected], known("ada"), "conn-me")).toEqual([]);
   });
 
   test("you turning up is not someone joining", () => {
@@ -64,7 +71,7 @@ describe("arrivals", () => {
   });
 
   test("someone who left and came back has joined again", () => {
-    expect(arrivals([member("bo")], known("ada"), "conn-me")).toEqual(["conn-bo"]);
+    expect(arrivals([member("bo")], known("ada"), "conn-me")).toEqual(["bo"]);
   });
 
   test("an empty room announces nobody", () => {
@@ -85,7 +92,9 @@ test("two tabs of one browser are two riders with two trains", () => {
   const second: ChatPresenceMember = { ...first, connectionId: "conn-b" };
 
   expect(partyTrains([first, second], "conn-a")).toHaveLength(1);
-  expect(arrivals([first, second], new Set(["conn-a"]), "conn-a")).toEqual(["conn-b"]);
+  // Your own second tab is still you: a train to look at, but nobody arrived,
+  // so nothing regroups and nobody's score resets.
+  expect(arrivals([first, second], new Set(), "conn-a")).toEqual([]);
   // One person, so one face, on whichever of them is drawn.
   expect(partyTrains([first, second], "conn-a")[0]?.owner.spriteUrl).toBe(spriteForUserId("same"));
 });

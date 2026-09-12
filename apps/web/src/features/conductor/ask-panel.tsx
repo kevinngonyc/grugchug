@@ -2,7 +2,12 @@
 // Passes the current station once a session is underway so the answer
 // focuses there (before studying starts, every station combined), plus the
 // last few answered exchanges so a follow-up question makes sense.
-import { MAX_ASK_HISTORY, type PublicRoutePlan } from "@grugchug/shared";
+import {
+  type AskTurn,
+  MAX_ASK_ANSWER_CHARS,
+  MAX_ASK_HISTORY,
+  type PublicRoutePlan,
+} from "@grugchug/shared";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { askConductor, ConductorApiError } from "./api";
 import { useMaterialLibrary } from "./material-library";
@@ -20,6 +25,22 @@ export function askStationId(
 }
 
 type QaEntry = { id: string; question: string; answer: string | null };
+
+/**
+ * The exchanges sent back with the next question: the last few that have an
+ * answer, each answer trimmed to what the server accepts. The TA's answers
+ * are not capped, and echoing one over the cap whole would make every later
+ * question fail validation until the panel reset.
+ */
+export function askHistory(entries: readonly QaEntry[]): AskTurn[] {
+  return entries
+    .flatMap((entry) =>
+      entry.answer === null
+        ? []
+        : [{ question: entry.question, answer: entry.answer.slice(0, MAX_ASK_ANSWER_CHARS) }],
+    )
+    .slice(-MAX_ASK_HISTORY);
+}
 
 type AskPanelProps = { plan: PublicRoutePlan | null };
 
@@ -101,11 +122,7 @@ export function AskPanel({ plan }: AskPanelProps) {
       if (!trimmed || !plan) return;
 
       const id = crypto.randomUUID();
-      const history = entries
-        .flatMap((entry) =>
-          entry.answer === null ? [] : [{ question: entry.question, answer: entry.answer }],
-        )
-        .slice(-MAX_ASK_HISTORY);
+      const history = askHistory(entries);
       setError(null);
       setAsking(true);
       setQuestion("");

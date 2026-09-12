@@ -33,20 +33,26 @@ export { spriteForUserId };
  * Who in this roster was not in the one before it, you excepted.
  *
  * Arrivals are what call the world to a standstill, so this is about people
- * rather than about the roster changing: a rename or a new focus score is not
- * an arrival. Anyone turning up is, though — someone who was here an hour ago,
- * someone who closed the tab and came back, someone whose socket dropped and
- * reconnected. The line regroups for all of them, because from inside the room
- * they are the same event.
+ * rather than about sockets: `known` holds userIds and so does the result. A
+ * rename or a new focus score is not an arrival, and neither is the same
+ * person back on a fresh connection — a wifi blip, an API restart, or a
+ * second tab of the browser you are in (which still gets a train, see
+ * partyTrains). Someone who closed the app and came back is, because they
+ * left the room in between.
  */
 export function arrivals(
   members: readonly ChatPresenceMember[],
   known: ReadonlySet<string>,
   selfId: string | null,
 ): string[] {
-  return members
-    .filter((member) => member.connectionId !== selfId && !known.has(member.connectionId))
-    .map((member) => member.connectionId);
+  const selfUserId = members.find((member) => member.connectionId === selfId)?.userId;
+  const arrived: string[] = [];
+  for (const member of members) {
+    if (member.connectionId === selfId || member.userId === selfUserId) continue;
+    if (known.has(member.userId) || arrived.includes(member.userId)) continue;
+    arrived.push(member.userId);
+  }
+  return arrived;
 }
 
 export function partyTrainId(userId: string): string {

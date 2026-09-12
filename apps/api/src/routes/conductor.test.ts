@@ -449,7 +449,7 @@ describe("askConductor", () => {
       }),
       {
         get: async () => plan,
-        getMaterials: async (planId) => (planId === "p1" ? materials : null),
+        getMaterials: async (forPlan) => (forPlan.id === "p1" ? materials : null),
         runAsk: async (input) => {
           received = input;
           return toolResult({ answer: "b" });
@@ -618,6 +618,13 @@ describe("evaluateProgress", () => {
 
     const under = await evaluate({ planId: "p1", results: resultsScoring(1, 1, 0.76, 0) });
     expect((await under.json()).passed).toBe(false);
+  });
+
+  test("decides on the whole percent the learner sees, so 69.5% is the 70% it reads as", async () => {
+    // Otherwise the panel would show "70% overall (pass mark 70%)" beside
+    // "not passed", and the feedback prompt would tell the model the same.
+    const rounded = await evaluate({ planId: "p1", results: resultsScoring(1, 1, 0.78, 0) });
+    expect((await rounded.json()).passed).toBe(true);
   });
 
   test("rejects a result whose questionId is not in this station", async () => {
@@ -797,8 +804,8 @@ test.each(["plan", "questions", "none"])(
     const body = await response.json();
     if (failure === "none") {
       expect(response.status).toBe(200);
-      expect(body.usedFallback).toBeUndefined();
-      expect(saved?.usedFallback).toBeUndefined();
+      expect("usedFallback" in body).toBe(false);
+      expect(saved).toBeDefined();
       expect(JSON.stringify(body)).not.toMatch(answerKeys);
     } else {
       expect(response.status).toBe(503);

@@ -9,7 +9,7 @@ afterEach(() => {
   useStudySession.setState(initial);
 });
 
-test("sample routes explain the fallback and offer regeneration", () => {
+test("the route summary offers regeneration, which bypasses the remembered route", () => {
   const studyAll = mock(async () => {});
   useStudySession.setState({
     mode: "idle",
@@ -17,18 +17,19 @@ test("sample routes explain the fallback and offer regeneration", () => {
     error: null,
     studyAll,
     plan: {
-      id: "sample",
+      id: "route",
       userId: "u1",
       materialHash: "h",
-      usedFallback: true,
       totalEstimatedMinutes: 5,
       stations: [
-        { id: "s1", index: 0, title: "Light", scope: "Sample", estimatedMinutes: 5, questions: [] },
+        { id: "s1", index: 0, title: "Light", scope: "Notes", estimatedMinutes: 5, questions: [] },
       ],
     },
   });
   render(<ConductorPanel />);
-  expect(screen.getByRole("alert").textContent).toContain("sample");
+  // Routes are never sample content any more — the API refuses instead — so
+  // there is no fallback alert to show.
+  expect(screen.queryByRole("alert")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Regenerate route" }));
   expect(studyAll).toHaveBeenCalledWith(true);
 });
