@@ -26,7 +26,7 @@ production the two deploy separately.
 | `src/components/` | App-level shared components |
 | `src/lib/` | Utilities, including shadcn's `cn` |
 | `src/styles/index.css` | Tailwind import, theme tokens, shadcn variables |
-| `public/models/` | `.glb` assets for the scene |
+| `public/models/` | `.glb` assets for the scene plus the Train Kit texture atlas they reference |
 
 Data flows one way: `gaze` and `typing` produce samples, `session` collects
 and persists them and drives `world` commands, `scene` renders `world`.

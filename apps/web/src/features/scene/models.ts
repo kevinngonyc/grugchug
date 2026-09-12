@@ -12,6 +12,10 @@ export const MODELS = {
   ],
 } as const;
 
+// The Train Kit glbs reference this atlas by relative path, so it must sit
+// next to them. The Nature Kit models embed their materials.
+export const TEXTURE_URLS: readonly string[] = ["/models/Textures/colormap.png"];
+
 export const ALL_MODEL_URLS: readonly string[] = [
   MODELS.locomotive,
   MODELS.carriage,

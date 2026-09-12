@@ -6,8 +6,10 @@
 // if the locomotive turns out to face backwards.
 export const KIT_ROTATION_Y = Math.PI / 2;
 
-// Lanes
+// Lanes. Each lane is deeper into the screen and shifted forward, so a friend's
+// train peeks out ahead of yours instead of hiding directly behind it.
 export const LANE_SPACING = 4; // metres deeper into the screen per lane
+export const LANE_STAGGER = 3.5; // metres further along the track per lane
 
 // Track: railroad-straight.glb is 4 m long with its origin at one end and
 // sits 1 m below its origin (measured), so lifting it by 1 puts rail top at 0.1.
@@ -57,8 +59,8 @@ export const CHARACTER_OFFSET: [number, number, number] = [-0.6, LOCOMOTIVE_HEIG
 export const CHARACTER_SIZE: [number, number] = [1.6, 1.6];
 
 // Camera
-export const CAMERA_POSITION: [number, number, number] = [0, 4, 22];
-export const CAMERA_LOOK_AT: [number, number, number] = [0, 1.5, -LANE_SPACING];
+export const CAMERA_POSITION: [number, number, number] = [0, 5.5, 22];
+export const CAMERA_LOOK_AT: [number, number, number] = [0, 1.2, -LANE_SPACING];
 export const CAMERA_FOV = 35;
 
 // Sky and hills

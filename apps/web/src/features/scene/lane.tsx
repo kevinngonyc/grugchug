@@ -1,7 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { targetSpeed, useWorld } from "@/features/world";
-import { LANE_SPACING, STATION_DISTANCE, VISIBLE_HALF_WIDTH } from "./constants";
+import { LANE_SPACING, LANE_STAGGER, STATION_DISTANCE, VISIBLE_HALF_WIDTH } from "./constants";
 import { createMotion, registerMotion, stepMotion, unregisterMotion } from "./motion";
 import { Scenery } from "./scenery";
 import { Station } from "./station";
@@ -62,7 +62,7 @@ export function Lane({ trainId }: LaneProps) {
   const stationXs = stations.map((s) => s.worldX);
 
   return (
-    <group position-z={-lane * LANE_SPACING}>
+    <group position={[lane * LANE_STAGGER, 0, -lane * LANE_SPACING]}>
       <Track motion={motion} />
       <Scenery motion={motion} stationXs={stationXs} />
       {stations.map((s) => (

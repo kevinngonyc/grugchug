@@ -122,3 +122,7 @@ train" button that seeds another lane with random phase changes.
   finished train's scroll freezes, so nothing recycles anyway.
 - `setLocalTrainId(id)` was added to the world commands; the hills parallax
   off the local train and the dev panel needs to know which train is ours.
+- The Train Kit glbs reference `Textures/colormap.png` by relative path rather
+  than embedding it; the atlas is committed beside them.
+- Lanes are staggered forward by `LANE_STAGGER` so a friend's train shows ahead
+  of yours instead of hiding directly behind it in the side view.
