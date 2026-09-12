@@ -1,20 +1,31 @@
-// MongoDB persistence for route plans. Thin on purpose: validation already
-// happened when the plan was assembled, and routePlanSchema.safeParse here
-// on read is a defense against documents written by an older shape.
+// SQLite persistence for route plans. The plan is stored as JSON; validation
+// already happened when it was assembled, and routePlanSchema.safeParse on
+// read is a defence against rows written by an older shape.
+import type { Database } from "bun:sqlite";
 import { type RoutePlan, routePlanSchema } from "@grugchug/shared";
-import { getDb } from "../db";
+import { getDatabase } from "../db";
 
-const COLLECTION = "routePlans";
-
-export async function saveRoutePlan(plan: RoutePlan): Promise<void> {
-  const db = await getDb();
-  await db.collection(COLLECTION).insertOne(plan);
+export async function saveRoutePlan(plan: RoutePlan, db: Database = getDatabase()): Promise<void> {
+  db.query("INSERT INTO route_plans (id, user_id, plan, created_at) VALUES (?, ?, ?, ?)").run(
+    plan.id,
+    plan.userId,
+    JSON.stringify(plan),
+    new Date().toISOString(),
+  );
 }
 
-export async function getRoutePlanById(id: string): Promise<RoutePlan | null> {
-  const db = await getDb();
-  const doc = await db.collection(COLLECTION).findOne({ id });
-  if (!doc) return null;
-  const result = routePlanSchema.safeParse(doc);
-  return result.success ? result.data : null;
+export async function getRoutePlanById(
+  id: string,
+  db: Database = getDatabase(),
+): Promise<RoutePlan | null> {
+  const row = db
+    .query<{ plan: string }, [string]>("SELECT plan FROM route_plans WHERE id = ?")
+    .get(id);
+  if (!row) return null;
+  try {
+    const result = routePlanSchema.safeParse(JSON.parse(row.plan));
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
 }
