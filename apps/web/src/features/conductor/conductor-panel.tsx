@@ -141,6 +141,12 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
           </li>
         ))}
       </ol>
+      {plan.usedFallback && (
+        <p role="alert" className="text-sm text-destructive">
+          Some content is a sample because generation failed. Regenerate the route to try your
+          materials again.
+        </p>
+      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <button
         type="button"
@@ -149,6 +155,14 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
         onClick={() => useStudySession.getState().startStudying()}
       >
         {busy ? "Starting…" : "Start studying"}
+      </button>
+      <button
+        type="button"
+        className={secondaryButtonClass}
+        disabled={busy}
+        onClick={() => void useStudySession.getState().studyAll(true)}
+      >
+        Regenerate route
       </button>
       <button
         type="button"

@@ -13,7 +13,9 @@ The web app is Vite + React + TypeScript. The API uses framework-free
 `Bun.serve` routes and Bun's built-in `bun:sqlite`, one local database file
 with no separate service to run. Vite proxies HTTP and WebSocket traffic
 under `/api` to port 3000; the frontend normally runs on 5173. Configure the
-API through `apps/api/.env` using `.env.example`.
+API through `apps/.env` using `.env.example`. API dev/start explicitly load
+root `.env`, `apps/.env`, then `apps/api/.env`; later files override earlier
+ones. Restart after changes. Environment settings are server-side.
 
 The current session runs the train scene, webcam attention tracking, profile
 selection, room chat, and the study loop end to end: uploading material,
@@ -103,7 +105,7 @@ profile before changing the passenger and broadcasting presence. Failed saves
 keep the previous avatar and offer a retry. The scene only requests the UI;
 profile owns saving and the session route applies the saved owner.
 
-The selectable avatars are Conductor, Bonbon, Poku, Cat, and Doug. They are
+The selectable avatars are Conductor, Bonbon, Poku, Cat, Doug, Bbob, and Bilby. They are
 passengers on the carriage. Every locomotive separately uses the fixed
 `conductor.png` as the speaking agent. Images share a 500x500 transparent
 canvas and a common plane size; the visible drawing determines world size.
@@ -145,13 +147,13 @@ replaced, or its train disappears; the context closes on session unmount.
 The study session narrates its own moments, not a phase watcher: it calls
 `sayLine` for `startSession` (a fresh route), `restartStudy` (resuming after
 a break or a passed station), `takeBreak`, `passQuiz`, and `greatSession`
-(the route's terminus), and `sayText` for lines with no recording, such as
+(the route's terminus or quitting an active session), and `sayText` for lines with no recording, such as
 naming the next station or announcing a break's end. `/session?dev` exposes
 `chatter`, which steps the local conductor through the registered voice
 lines one click at a time and gives friends canned text, so every clip can
 be heard without a real break or finish. Text-only, failed, or
-autoplay-blocked clips use a text-duration fallback. A gesture can unlock
-audio for subsequent playback.
+autoplay-blocked clips use a text-duration fallback. The first gesture creates and unlocks the audio context before asynchronous
+timer responses. Break narration starts immediately on the click.
 
 All five recordings are committed and registered: `startSession`,
 `takeBreak`, `restartStudy`, `greatSession`, and `passQuiz`, each triggered
@@ -222,7 +224,12 @@ Paths below are relative to `apps/api/`.
 Plan creation first produces station outlines, then generates questions for
 stations in parallel and persists the assembled route. MCQ grading is local;
 short answers and study questions use tools. Public schemas strip answer keys
-before returning plans to the browser.
+before returning plans to the browser. Routes also carry optional
+`usedFallback` metadata when planning or question generation used samples.
+The route summary displays a warning and offers Regenerate route, which
+bypasses the library's remembered plan without deleting materials. Sample
+routes are not remembered or reused automatically; older plans without the
+flag can still be regenerated explicitly.
 
 Tools run through the harness: a flash-tier attempt plus up to two retries,
 then one pro-tier escalation, then a fixture if all attempts fail. Tools that
@@ -246,8 +253,11 @@ owner; another caller gets no access to the run. This is still placeholder
 identity, not authentication. The client calls use a bounded timeout; writes
 fail silently so a missing API never blocks a study session, and the read
 throws so the dashboard can say history is unavailable. The study session
-records its `historyId` in persisted state so a resumed session keeps
-writing to the same run.
+stores run metadata for bookkeeping. On refresh, it clears that metadata and
+ends the previous unfinished history record as quit, without restoring its
+plan or timer. Profile, uploaded materials, and history survive refresh.
+Pending API work is invalidated when quitting or starting another route so
+late responses cannot restart a finished session.
 
 `provider/index.ts` selects Gemini or Groq through `LLM_PROVIDER` and reads the
 vendor's API key and flash/pro model variables. Gemini receives PDF bytes;

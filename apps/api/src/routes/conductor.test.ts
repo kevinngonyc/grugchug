@@ -155,6 +155,7 @@ describe("createPlan", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
+    expect(body.usedFallback).toBe(true);
     // Station 0 fell back: keeps its real id/title/scope, generic fixture questions.
     const fixtureFirstStation = fixtureRoutePlan.stations[0];
     if (!fixtureFirstStation) throw new Error("fixtureRoutePlan has no stations");
@@ -525,3 +526,31 @@ describe("evaluateProgress", () => {
     expect(res.status).toBe(404);
   });
 });
+
+test.each(["plan", "questions", "none"])(
+  "marks persisted and public fallback provenance: %s",
+  async (failure) => {
+    let saved: RoutePlan | undefined;
+    const response = await createPlanWithDeps(
+      post("/api/conductor/plans", { userId: "u1", materials: [{ kind: "text", text: "notes" }] }),
+      {
+        runPlanRoute: async () => ({
+          ...toolResult<PlanRouteOutput>({ stations: skeletons }),
+          fellBackToFixture: failure === "plan",
+        }),
+        runGenerateQuestions: async () => ({
+          ...toolResult<GenerateQuestionsOutput>({ questions: fourQuestions }),
+          fellBackToFixture: failure === "questions",
+        }),
+        save: async (plan) => {
+          saved = plan;
+        },
+      },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.usedFallback).toBe(failure !== "none");
+    expect(saved?.usedFallback).toBe(failure !== "none");
+    expect(JSON.stringify(body)).not.toMatch(answerKeys);
+  },
+);
