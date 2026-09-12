@@ -39,9 +39,10 @@ export function syncPartyTrains(
     world.setOwner(local.id, { ...local.owner, name: self.displayName });
   }
 
-  // Every roster is compared with the one before it, the empty one a dropped
-  // socket leaves included. So a reconnect reads as everyone arriving again —
-  // which is right: coming back is joining.
+  // Every roster is compared with the one before it, by person. An empty
+  // roster is a dropped socket, not an empty room — the server never sends
+  // one, since you are always in your own roster — so `known` is kept through
+  // it and the reconnect that follows does not read as everyone arriving.
   //
   // Somebody turning up restarts the sitting for everyone present. The focus
   // score returns to neutral and is earned up or down from there, so nobody
@@ -49,13 +50,15 @@ export function syncPartyTrains(
   // arrived, and nobody who was slacking is punished for it either; every
   // client in the room sees the same arrival and does the same thing, so the
   // whole party levels together. `regroup()` lines the trains up to match.
-  if (arrivals(roster, known, selfId).length > 0) {
-    useEfficiency.getState().neutralize();
-    world.regroup();
+  if (roster.length > 0) {
+    if (arrivals(roster, known, selfId).length > 0) {
+      useEfficiency.getState().neutralize();
+      world.regroup();
+    }
+    known = new Set(
+      roster.filter((member) => member.connectionId !== selfId).map((member) => member.userId),
+    );
   }
-  known = new Set(
-    roster.filter((member) => member.connectionId !== selfId).map((member) => member.connectionId),
-  );
 
   const wanted = partyTrains(roster, selfId);
   const wantedIds = new Set(wanted.map((train) => train.id));

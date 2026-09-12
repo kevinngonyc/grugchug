@@ -76,6 +76,19 @@ test("somebody turning up puts everyone's focus score back to neutral", () => {
   expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_NEUTRAL);
 });
 
+test("a dropped socket coming back does not reset anyone's score", () => {
+  const store = useEfficiency.getState();
+  store.reset();
+  let known = syncPartyTrains(roster, SELF, new Set());
+  store.report("quiz", 1, { weight: 1 });
+  expect(useEfficiency.getState().score).toBeGreaterThan(90);
+
+  // The roster empties while the socket is down and refills on reconnect.
+  known = syncPartyTrains([], SELF, known);
+  syncPartyTrains(roster, SELF, known);
+  expect(useEfficiency.getState().score).toBeGreaterThan(90);
+});
+
 test("the line regroups when anyone turns up, including coming back", () => {
   const alone = [roster[0] as ChatPresenceMember];
   const together = roster;
@@ -108,9 +121,20 @@ test("the line regroups when anyone turns up, including coming back", () => {
   expect(useWorld.getState().regroups).toBe(2);
 
   // The socket drops — the roster empties because there is nothing to report,
-  // not because the room did — and reconnects. That is an arrival too.
+  // not because the room did — and reconnects. Nobody joined, so nothing
+  // regroups.
   known = syncPartyTrains([], SELF, known);
   expect(useWorld.getState().regroups).toBe(2);
-  syncPartyTrains(together, SELF, known);
-  expect(useWorld.getState().regroups).toBe(3);
+  known = syncPartyTrains(together, SELF, known);
+  expect(useWorld.getState().regroups).toBe(2);
+
+  // The friend's own socket drops and comes back under a new connection id.
+  // Same person, so still not an arrival.
+  const friend = roster[1] as ChatPresenceMember;
+  syncPartyTrains(
+    [roster[0] as ChatPresenceMember, { ...friend, connectionId: "conn-friend-2" }],
+    SELF,
+    known,
+  );
+  expect(useWorld.getState().regroups).toBe(2);
 });
