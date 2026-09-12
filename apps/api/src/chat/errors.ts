@@ -5,18 +5,11 @@ import type { ChatErrorCode } from "@grugchug/shared";
 
 /**
  * A short, actionable sentence for the client. The full error is logged
- * server-side; what comes back here only names the cause when knowing it
- * helps, and the two cases worth naming are both local setup mistakes.
+ * server-side; storage is an embedded SQLite file with nothing external to
+ * misconfigure or fail to reach, so there is no local setup mistake left
+ * worth naming here.
  */
-export function explainFailure(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : String(cause ?? "");
-
-  if (message.includes("MONGODB_URI")) {
-    return "the API has no MONGODB_URI — copy .env.example to apps/api/.env and restart it";
-  }
-  if (/ECONNREFUSED|ServerSelection|failed to connect|topology|ETIMEDOUT/i.test(message)) {
-    return "the API cannot reach MongoDB — start it with `docker compose up -d`";
-  }
+export function explainFailure(_cause: unknown): string {
   return "something went wrong on the server";
 }
 

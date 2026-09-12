@@ -2,7 +2,6 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Db } from "mongodb";
 
 // One SQLite file for everything the API keeps. Bun ships the driver, so there
 // is nothing to install or run alongside. SQLITE_PATH overrides the location;
@@ -88,11 +87,4 @@ let shared: Database | undefined;
 export function getDatabase(): Database {
   if (!shared) shared = openDatabase(process.env.SQLITE_PATH ?? DEFAULT_SQLITE_PATH);
   return shared;
-}
-
-// Removed in Task 2 once the chat and plan stores are on SQLite. Typed as
-// `Promise<Db>`, not `Promise<never>`, so the still-Mongo call sites
-// (`db.collection(...)`) keep typechecking until Task 2 rewrites them.
-export async function getDb(): Promise<Db> {
-  throw new Error("MongoDB has been removed; migrate this store to SQLite");
 }
