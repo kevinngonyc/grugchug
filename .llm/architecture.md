@@ -1,204 +1,236 @@
 # Architecture
 
-## Packages
+## Packages and runtime
 
 ```
-apps/web  ──HTTP /api──>  apps/api  ──>  MongoDB
-    │                        │
-    └───── packages/shared ──┘   zod schemas, the data contract
+apps/web ── HTTP /api + WebSocket /api/chat/ws ──> apps/api ──> MongoDB
+    │                                               │
+    └────────────── packages/shared ────────────────┘
+                    zod schemas and types
 ```
 
-Vite serves the web app and proxies `/api` to the Bun server in dev. In
-production the two deploy separately.
+The web app is Vite + React + TypeScript. The API uses framework-free
+`Bun.serve` routes and the official MongoDB driver. Vite proxies HTTP and
+WebSocket traffic under `/api` to port 3000; the frontend normally runs on
+5173. Configure the API through `apps/api/.env` using `.env.example`.
 
-## apps/web
+The current session runs the train scene, webcam attention tracking, profile
+selection, conductor speech, and room chat. Typing capture and persisted
+study-session history remain future work; their shared schemas exist.
+
+## Web package map
+
+Paths below are relative to `apps/web/`. Features expose their public surface
+through `src/features/<feature>/index.ts`.
 
 | Path | Responsibility |
 |---|---|
-| `src/app.tsx` | Top-level layout and routes |
-| `src/routes/` | One file per page: dashboard, session, settings, the invite landing page (which joins and redirects), and redirects from the old `/chat` links into the session |
-| `src/features/gaze/` | Webcam eye tracking: calibration, gaze estimates, attention metrics. Emits `GazeSample` |
-| `src/features/typing/` | Keystroke timing and corrections, never key contents. Emits `TypingSample` |
-| `src/features/world/` | zustand store of trains, phases, efficiency; command API every driver uses. No three.js; commands include setLocalTrainId and regroup |
-| `src/features/speech/` | Conductor speech drivers: the player watches `world` for new utterances, plays the clip or a text-length fallback, then `clearSpeech`; the departure announcer says the start-of-session line when the local train departs. `lines.ts` is the voice-line registry; the scene supplies a positional audio output |
-| `src/features/profile/` | Who this browser is: the user record from `/api/users` (name, avatar), the avatar catalog, and the picker |
-| `src/features/scene/` | react-three-fiber rendering of the world store: one lane per train, all scrolling with the local train's motion; stations on the local lane, scenery, a conductor and a passenger sprite per train, and a speech bubble plus bob on the conductor while its train has `speech`. Never writes the store; supplies camera/conductor positions and a quiet spatial voice output |
-| `src/features/efficiency/` | The study efficiency score: 0..100, a weighted blend of whatever is reporting. Pure scoring in `score.ts`, attention averaging in `attention.ts`, one zustand store |
-| `src/features/session/` | Starts and stops a session, gathers samples from gaze and typing, sends them to the API. Drives train state alongside the speech driver: the score becomes the local train's efficiency, and the chat roster becomes the trains in the lanes beside it |
-| `src/features/chat/` | The one room you are in, live messages over a WebSocket, history from the API, and the roster of who is connected. Drawn as an overlay inside the session, not as a page; owns its own identity in `localStorage` |
-| `src/components/ui/` | shadcn components |
-| `src/components/` | App-level shared components |
-| `src/lib/` | Utilities, including shadcn's `cn` |
-| `src/lib/user-id.ts` | The browser's user id, minted once into localStorage. Shared by `profile` and `chat` |
-| `src/styles/index.css` | Tailwind import, theme tokens, shadcn variables |
-| `public/models/` | `.glb` assets for the scene plus the Train Kit texture atlas they reference |
-| `public/characters/`, `public/audio/` | Character PNGs and conductor voice clips |
+| `src/app.tsx`, `src/routes/` | Dashboard, session, Settings, invite landing page, and redirects from old chat URLs |
+| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. Webcam preview and diagnostics are dev-only |
+| `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
+| `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
+| `src/features/session/` | Drives local efficiency, sends focus to chat, and maps the chat roster to companion trains |
+| `src/features/world/` | Zustand train intent: owners, phases, efficiency, speech, local train ID, and regroup count. No three.js |
+| `src/features/profile/` | Loads/saves the browser's profile, defines the avatar catalog, and renders the Settings picker |
+| `src/features/speech/` | Voice-line registry, departure announcements, playback/fallback timing, and clearing finished utterances |
+| `src/features/scene/` | Train models, shared scrolling environment, relative companion motion, stations, sprites, speech bubbles, and positional audio output. Reads world state only |
+| `src/features/chat/` | The current room, messages, identity/display name, invite links, socket lifecycle, and live roster |
+| `src/lib/user-id.ts` | Browser-generated ID in localStorage, shared by profile and first-time chat requests |
+| `src/components/ui/` | shadcn-generated components |
+| `src/styles/index.css` | Tailwind imports and shared styling |
+| `public/models/` | Kenney GLBs and the Train Kit texture atlas |
+| `public/characters/`, `public/audio/` | Transparent avatar PNGs and conductor recordings |
 
-Data flows one way: `gaze` and `typing` produce samples, those samples become
-signals in `efficiency`, `session` collects and persists them and drives
-`world` commands from the score, `scene` renders `world`.
-`world` is pure TypeScript, so anything can drive it without WebGL: the
-session timer, a tracking score, an agent tool call routed through the API,
-a multiplayer sync calling `applySnapshot`, or `speech` saying a line and
-clearing it when the clip ends. `profile` feeds the local train's owner into
-`world`.
+## State ownership and data flow
 
-`chat` sits beside that flow rather than in it, and still reads nothing from
-the rest of the app. Two threads cross the boundary, both driven from
-`session`, both one-way:
+```
+Gaze.onFacing ──> efficiency ──> session ──> world ──> scene
+                                  │          ▲
+                                  │          │ say / clearSpeech
+                                  │        speech <── scene audio output
+                                  │
+                                  ├── reportFocus ──> chat socket
+                                  └── roster <────── chat socket
 
-- `session` calls `chat`'s `reportFocus()` on the same tick that drives the
-  local train, and the open socket carries the number to the room. `chat`
-  throttles it and otherwise treats it as an opaque value.
-- `session` reads `chat`'s `useRoster()` and turns it into trains
-  (`use-party-trains.ts`), so chat never writes `world` directly.
+profile ──> session route ──> local train owner
+```
 
-`ChatOverlay` is chat's only visible surface: a bubble in the corner of the
-session that opens a panel over the scene. There is nothing to route to and
-nothing to pick — one room, resolved on mount. The panel stays mounted while
-it is closed, because the socket is what tells the room you are here. Ordering
-and de-duplication live in `message-log.ts`, and the roster-to-trains rules in
-`features/session/party.ts`; both are pure and tested without a socket or a
-server.
+`features/efficiency` is the only source of the score. Sources report a 0..1
+value with a weight and optional half-life. The score is the weighted mean,
+scaled to 0..100; stale signals lose weight and eventually expire. Attention
+is the live input today. Quiz, typing, and pacing are possible future inputs;
+the dev panel can supply a manual override.
 
-## apps/api
+`useEfficiencyDrive` ticks every 500 ms, ages the signals, updates local train
+efficiency, and calls chat's throttled `reportFocus()`. Low focus slows the
+train; it does not stop it. Stops are explicit phase changes.
+
+The session route creates the local train running after the profile reaches
+`ready` or `error`, with a live-store guard for StrictMode. It applies later
+avatar changes. `usePartyTrains` consumes chat's roster and calls
+`syncPartyTrains` to update companions. Presence can change the local chat
+name but preserves the selected passenger; companion updates preserve any
+active speech. The dev panel also drives world commands directly.
+
+Chat reads no other feature's store. Session is the bridge for focus and
+presence. World commands express intent; scene motion stays in refs. Speech
+is a separate driver that reads utterances and clears only the matching ID
+when playback or its fallback timer finishes.
+
+## Profiles and identity
+
+`GET /api/users/:id` loads a profile; `PUT /api/users/:id` upserts name and
+avatar. Both routes validate IDs with the shared 1–64 character `userIdSchema`.
+`userProfileSchema` validates PUT bodies. Creation time is preserved on update.
+The frontend bounds each request to three seconds so a stalled API cannot
+prevent the local train from boarding. Failed loads use Poku; failed saves
+retain the last loaded profile.
+
+The selectable avatars are Conductor, Bonbon, Poku, Cat, and Doug. They are
+passengers on the carriage. Every locomotive separately uses the fixed
+`conductor.png` as the speaking agent. Images share a 500x500 transparent
+canvas and a common plane size; the visible drawing determines world size.
+
+New chat requests use the shared browser ID when no chat identity exists.
+Browsers with older chat identities retain those IDs; there is no migration
+that unifies an existing chat identity with a newer profile. Chat names are
+editable independently of the profile name. Companion sprites are currently
+assigned from user IDs: selected avatars are not transmitted in presence.
+
+## Scene and voice playback
+
+`TrainWorld` owns the canvas and shared local travel. Every lane's rails,
+scenery, and platforms use that travel. Only the local lane creates stations.
+Each companion train has its own speed and moves along its track relative to
+the local train; its wheels and smoke use that speed. Whole multi-axle bogies
+stay fixed, while individual wheel meshes spin.
+
+Relative gaps close gradually when speeds converge. New roster participants
+call `regroup()`, resetting speed and lining companions up again. A companion
+outside the camera frame is represented by `DriftMarker`; `framing.ts`
+computes the visible width from the current camera and viewport.
+
+The closer camera views the trains from the negative-z side; lanes extend in
+positive z. Camera, spacing, drift, bounce, and audio tuning values live in
+`features/scene/constants.ts`. Conductor bounce is upward-only so it cannot
+dip below the resting point into the roof. Sprites billboard toward the
+camera, and speech bubbles follow the conductor.
+
+`useSpeechPlayer(createVoiceAudio)` connects the driver to the scene's audio
+adapter. The adapter routes media elements through HRTF panners, inverse
+distance attenuation, and reduced gain. `VoiceListener` follows the camera;
+`Character` publishes each conductor's actual world position, including bob
+and companion drift. Audio nodes are disconnected when a line ends, is
+replaced, or its train disappears; the context closes on session unmount.
+
+The departure announcer uses `VOICE_LINES.startSession` when the local train
+first appears running or transitions back to running. Returning to a session
+with an already-running train does not announce again. `/session?dev` exposes
+`chatter`: the local conductor plays the departure clip, while friends get
+canned text. Text-only, failed, or autoplay-blocked clips use a text-duration
+fallback. A gesture can unlock audio for subsequent playback.
+
+Five recordings are committed. `startSession`, `greatSession`, and `passQuiz`
+are registered; only the first has an automatic trigger. `restart_study1.mp3`
+and `take_break1.mp3` are assets awaiting registration and triggers. Registry
+captions are placeholders pending transcripts. The conductor API does not
+yet drive client speech or generate voice clips.
+
+## Chat and multiplayer
+
+`ChatOverlay` opens a panel over the session. The panel stays mounted while
+closed to retain its socket and presence. There is one current room per
+browser: requesting it creates one if needed, and an invite link joins
+someone else's. The latest `chatMembers.joinedAt` determines the current room.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/chat/room` | Resolve or create the caller's current room |
+| `POST /api/chat/rooms/join` | Join via an invite link |
+| `GET /api/chat/rooms/:roomId/messages` | Paginated history; accepts `before` |
+| `GET /api/chat/ws?roomId&userId` | Upgrade after checking room membership |
+
+HTTP uses `CHAT_USER_HEADER`; the socket passes identity in its query string.
+The server validates events and rate-limits each socket. Messages persist in
+MongoDB; live presence is the set of connected sockets and is not stored.
+Roster entries contain user ID, display name, and 0..1 efficiency. Multiple
+tabs for one user produce one rider; the newest connection's reading wins.
+
+Presence changes broadcast the roster. Session renders at most four companion
+trains, excluding self, in roster order. Only presence and focus cross this
+boundary: train phases, positions, selected avatars, and speech do not.
+`applySnapshot` remains available in the world store but is not the chat
+transport. Message ordering, optimistic reconciliation, and de-duplication
+live in `message-log.ts`.
+
+## API package map
+
+Paths below are relative to `apps/api/`.
 
 | Path | Responsibility |
 |---|---|
-| `src/index.ts` | `Bun.serve` with a `routes` table under `/api`, plus the `websocket` handler |
-| `src/routes/` | One file per resource, exporting plain request handlers |
-| `src/chat/store.ts` | Chat's MongoDB access: `chatRooms`, `chatMembers`, `chatMessages` |
-| `src/chat/hub.ts` | The `WebSocketHandler`: one pub/sub topic per room, plus the live roster of open sockets per room |
-| `src/chat/ids.ts` | Room ids, invite codes, and the placeholder user id |
-| `src/chat/rate-limit.ts` | Per-connection token bucket |
-| `src/db.ts` | Lazy MongoDB connection from `MONGODB_URI` |
-| `src/routes/users.ts` | `GET`/`PUT /api/users/:id`: read and upsert a browser-identified user's name and avatar |
-| `src/users-repo.ts` | `UserRepo` interface; Mongo implementation over the `users` collection and an in-memory one for tests |
-| `src/routes/conductor.ts` | Conductor endpoints: create/get a route plan, grade answers, ask |
-| `src/conductor/` | Turns study material into a route of stations with questions. `fixtures.ts` is the fallback route |
+| `src/index.ts` | HTTP route table and WebSocket handler |
+| `src/db.ts` | Lazy connection from `MONGODB_URI` |
+| `src/routes/users.ts`, `src/users-repo.ts` | Validated profiles; Mongo repository and an in-memory test implementation |
+| `src/routes/chat.ts` | Room resolution, joins, history, and socket upgrade |
+| `src/chat/store.ts` | `chatRooms`, `chatMembers`, and `chatMessages` collections |
+| `src/chat/hub.ts` | Per-room socket topics, message/focus/rename events, and in-memory presence |
+| `src/chat/rate-limit.ts`, `src/chat/errors.ts` | Per-connection throttling and request failure reporting |
+| `src/routes/conductor.ts` | Plan creation/retrieval, answer grading, and questions |
+| `src/conductor/tools/` | Plan stations, generate questions, grade answers, and answer study questions |
+| `src/conductor/harness.ts` | Validated tool execution, content-hash cache, timeouts, retries, confidence checks, traces, and fixtures |
+| `src/conductor/provider/` | Gemini/Groq adapters and central vendor/model selection |
+| `src/conductor/pdf.ts`, `src/conductor/material-parts.ts` | Material conversion; local PDF text extraction for Groq |
+| `src/conductor/store.ts` | MongoDB `routePlans` persistence with schema validation on read |
 
-Handlers validate bodies with schemas from `packages/shared` before touching
-the database.
+## Conductor API
 
-## packages/shared
-
-| Schema | Meaning |
+| Endpoint | Purpose |
 |---|---|
-| `user` | Browser-identified user: `id`, `name`, `avatar` (`AvatarId`), `createdAt`; `userProfile` is the PUT body |
-| `session` | One study sitting, start to stop |
-| `gazeSample` | A gaze estimate at time `t`, viewport-normalized `x, y`, `onScreen` |
-| `typingSample` | A keystroke at time `t` and whether it was a correction |
-| `chatRoom` | A room, its name, and the invite code that grants access |
-| `chatMember` | A `(roomId, userId)` membership, the display name it uses, and when it last came in through a link |
-| `chatPresenceMember` | Someone connected right now: who they are and their 0..1 study score. Never stored |
-| `chatMessage` | One message, with the sender's display name denormalized onto it |
-| `clientChatEvent` / `serverChatEvent` | The WebSocket wire protocol, as discriminated unions |
-| `train` | `TrainPhase`, `TrainState` (id, owner, phase, efficiency, lane, optional `speech`), `Speech`, `WorldSnapshot` |
-| `conductor` | `RoutePlan` of `Station`s with `Question`s, answer and ask bodies. `public*` variants strip answer keys for the browser |
+| `POST /api/conductor/plans` | Turn text/PDF study material into a persisted plan |
+| `GET /api/conductor/plans/:id` | Read the public plan without answer keys |
+| `POST /api/conductor/stations/:stationId/answer` | Grade a submitted answer |
+| `POST /api/conductor/ask` | Answer a question about the study material |
 
-## Chat
+Plan creation first produces station outlines, then generates questions for
+stations in parallel and persists the assembled route. MCQ grading is local;
+short answers and study questions use tools. Public schemas strip answer keys
+before returning plans to the browser.
 
-Rooms are the only unit of access: being a member of one is what lets you read
-and post, and the invite code is what makes you a member. A browser is in
-exactly one room — the one it most recently entered — so there is no room list,
-no picker, and no joining by typing a code. Asking for your room is what
-creates it the first time; an invite link is the only way into someone else's.
+Tools run through the harness: a flash-tier attempt plus up to two retries,
+then one pro-tier escalation, then a fixture if all attempts fail. Tools that
+request confidence checks use the configured threshold (currently 0.6).
+Successful results are cached by tool name/input. Provider calls have bounded
+waiting and trace records. Fixture fallback does not replace MongoDB: plan
+persistence still requires a reachable database.
 
-```
-POST /api/chat/room             the room you are in, created on first ask
-POST /api/chat/rooms/join       enter a room from an invite link
-GET  /api/chat/rooms/:roomId/messages   history, newest page first, `before` pages back
-GET  /api/chat/ws?roomId&userId WebSocket upgrade, after a membership check
-```
+`provider/index.ts` selects Gemini or Groq through `LLM_PROVIDER` and reads the
+vendor's API key and flash/pro model variables. Gemini receives PDF bytes;
+Groq receives locally extracted PDF text. Tests inject tool/provider/store
+dependencies and never contact these services.
 
-`chatMembers.joinedAt` is when a membership last came in through a link, not
-when it was created. It is what decides which room you are in, so following a
-link you have followed before moves you back to that room.
+## Shared contracts
 
-### Presence
+`packages/shared` exports zod schemas and inferred types used across HTTP,
+WebSockets, and persistence. Web/API code imports `@grugchug/shared`.
 
-The set of open sockets in a room *is* the roster: nothing is stored, so
-someone who closes the tab is gone and a restart starts everyone empty. Any
-change — an arrival, a departure, a rename, a new focus score — broadcasts the
-whole roster to everyone in the room, sent socket by socket rather than
-published to the topic, because the person who just arrived needs it too.
+| Schema family | Contents |
+|---|---|
+| `user` | Avatar IDs, user record, and editable profile body |
+| `chat` | User-ID bound, rooms, memberships, messages, presence, request/response bodies, and socket events |
+| `train` | Train owner/phase/efficiency/lane, optional speech, and world snapshots |
+| `efficiency` | Weighted source signals, half-life, timestamps, and score limits |
+| `conductor` | Material, route plans, stations, questions, grading/ask bodies, and public variants without answer keys |
+| `session`, `gaze`, `typing` | Contracts for future session/sample persistence; typing capture is not implemented |
 
-Riders carry their study score on the roster, and the browser turns each rider
-into a train in the lane beside yours. `features/scene` scrolls every lane with
-the local train so the rails and scenery stay in step; a friend's train runs its
-own speed on top of that, so a difference in focus shows up as a gap along the
-track. Nothing caps that gap, so a friend who is well ahead or well behind
-leaves the frame entirely and a `DriftMarker` takes their place: an arrowhead
-that rides the edge of the picture, pointing the way they went. The marker is
-placed against the camera frustum every frame rather than at a world position,
-which is what keeps it on the edge when the window is resized.
+## Remaining gaps
 
-A gap only means something while the two trains disagree about speed, so while
-they agree it eases shut (`driftClosing`) and someone lost during a bad stretch
-comes back during the next lull. Someone new arriving calls `regroup()`: every
-train's speed drops to nothing and every companion is placed level with its
-lane again, so a newcomer meets a line that is together rather than strung out
-over a kilometre.
-
-HTTP requests identify the caller with the `CHAT_USER_HEADER` header. The
-WebSocket cannot set headers, so it passes the same value as a query parameter
-and membership is checked before the upgrade; everything after that trusts
-`ws.data`. A sender's own message comes back with their `clientId` attached so
-the optimistic bubble is replaced rather than duplicated; everyone else's copy
-carries `null`.
-
-## Efficiency
-
-One number, 0..100, for how well a sitting is going. It is a blend, not a
-measurement: every source reports a 0..1 opinion with a weight, and the score
-is their weighted mean.
-
-```
-gaze ──facing?──> attention signal ─┐
-quiz ───score───> quiz signal ──────┼─> weighted mean ─> score 0..100 ─> train efficiency
-anything else ──> its own signal ───┘                                 └─> dashboards, summaries, agents
-```
-
-```ts
-useEfficiency.getState().report("quiz", 0.8, {
-  label: "Quiz", weight: 0.5, halfLifeMs: 10 * 60_000,
-});
-```
-
-Weights are read against attention's `1`, so a source at `0.5` can pull the
-score at most a third of the way to its own value. `halfLifeMs` is how fast a
-reading goes stale: its weight halves every half-life and is dropped below
-1/64, so a one-off result fades on its own while a source that keeps reporting
-never does. `null` means it counts until someone drops it.
-
-Readers take the number and nothing else — `efficiencyScore()` outside React,
-`useEfficiency((s) => s.score)` inside it, `efficiencyFraction()` for the 0..1
-form a train wants. `features/session/use-efficiency-drive.ts` is the only
-writer of local train efficiency; it ticks twice a second, which is also what ages the
-signals. Nothing reads back out of `world` to get the score.
-
-The local train is created `running` and stays running: the score sets its
-speed through `targetSpeed()`, MIN_SPEED at focus 0 up to MAX_SPEED at focus
-100, so a bad stretch is slow rather than stuck. Stopping is a separate
-decision (a station, the end of a session), not something the score does.
-
-The signal shape is `efficiencySignalSchema` in `packages/shared`, so a score
-can cross the wire when sessions are persisted or friends' trains are synced.
-
-## Deferred
-
-- Auth: none yet. `userId` is a plain string — for chat, a long random one the
-  server mints and the client stores. It is unguessable, so it behaves like a
-  bearer token, but it is not authentication: anyone holding the string is that
-  user, and a member who leaves keeps access until the room is rebuilt. Replace
-  this wholesale when auth lands; see the chat design doc.
-- Gaze library: not chosen. WebGazer.js and MediaPipe Face Mesh are the candidates.
-- Server framework: none. Express, Hono, or Elysia can be mounted in `apps/api/src/index.ts`.
-- Efficiency inputs: attention is the only source reporting today. The quiz, typing, and session pacing are the obvious next ones, and each is a `report()` call — see "Efficiency" above. `features/world/speed.ts` still maps efficiency to speed linearly.
-- Multiplayer transport: friends' trains ride on chat presence, which is
-  enough for "who is studying with me" but is not a world sync — nobody's
-  phase, station or scroll position crosses the wire, and `applySnapshot` is
-  still unused.
-- Voice clips: `say(trainId, text, audioUrl)` plays whatever URL it is given. Five clips ship in `public/audio/`; only the start-of-session line is wired up, and its caption in `features/speech/lines.ts` is a placeholder until the transcript is pasted in. Generating clips belongs to the conductor agent pipeline, which does not yet call `say`.
-- Speech across clients: each client's speech player clears lines locally. A snapshot that re-delivers a friend's finished line puts its bubble back until the friend's clear propagates. Multiplayer spec.
-- One identity: `lib/user-id` is used by profile always and by chat only on a first create or join. A browser that chatted before this landed keeps its older chat id alongside the new profile id until real auth replaces both.
+- Browser IDs and room membership are placeholders for authentication; they
+  are not verified accounts. Profile and chat identity migration is pending.
+- The live attention signal is based on head pose, not a calibrated measure
+  of reading comprehension. Typing capture, session history, and automatic
+  quiz-to-efficiency reporting are not wired up.
+- The frontend does not yet connect conductor plans/questions to the scene's
+  stations, quizzes, or speech commands.
+- Selected avatars and speech are not synchronized to other clients. A future
+  snapshot transport must also handle re-delivered, already-finished speech.

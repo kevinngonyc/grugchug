@@ -1,8 +1,10 @@
 # grugchug
 
-Study buddy web app. Tracks a user's eye gaze and typing during study sessions
-to measure focus and efficiency, and renders simple 3D scenes (trains) as
-feedback. React on the front, Bun on the back, MongoDB for persistence.
+Study buddy web app. Webcam head pose drives a study-focus score and a 3D
+train scene. Chat presence adds companion trains; conductors speak through
+spatial audio, and users choose passenger avatars. React on the front, Bun
+on the back, MongoDB for profiles, chat, and conductor route plans. Typing
+capture and session-history persistence are not implemented yet.
 
 `architecture.md` in this directory has the package map and feature
 boundaries. Read it before adding code.
@@ -33,7 +35,8 @@ All from the repo root.
 - `bun run lint` — `biome check .`
 - `bun run fmt` — `biome check --write .`
 - `bunx shadcn@latest add <component>` — run inside `apps/web`
-- `/session?dev` in the browser — dev panel to drive trains by hand
+- `/session?dev` in the browser — dev panel for phases, manual focus, friend
+  trains, and `chatter` (replays the local departure voice line)
 
 ## Conventions
 
@@ -51,24 +54,49 @@ All from the repo root.
   no MongoDB, no webcam.
 - `.llm/` is the single source of agent context. Root `AGENTS.md` is a symlink
   into it and root `CLAUDE.md` imports it. Edit the files here, not the root ones.
-- `features/world` never imports three.js. `features/scene` never writes the
-  store. Per-frame animation state lives in refs, not React state.
+- `features/world` never imports three.js. It holds intent (trains, phases,
+  efficiency, owners, speech, regroup count); motion lives in the scene.
+- `features/scene` never writes the world store. Per-frame animation and
+  spatial positions live in refs, not React state. All scene tuning values,
+  including camera, bounce, drift, and audio gain, live in `constants.ts`.
 - The study efficiency score has one home: `features/efficiency`. Sources
   report into it (`report(source, 0..1, { weight, halfLifeMs })`); readers read
-  `score` and never recompute their own. `features/session` (the score and chat roster) and
-  `features/speech` (utterances) are the only writers into `world`.
-- `features/chat` reads nothing from the rest of the app. Traffic across that
-  boundary is driven from `features/session` and goes one way each: the score
-  is pushed in with `reportFocus()`, and the roster is read out with
-  `useRoster()`. Keep it that way rather than letting chat reach for a store.
-- Scene numbers live in `features/scene/constants.ts`. Tune there, not inline.
+  `score` and never recompute their own. `features/session` drives efficiency
+  and party trains; `features/speech` owns utterances. The session route
+  bootstraps the local train and applies profile changes; the dev panel also
+  uses world commands directly.
+- `features/chat` never reads another feature's store. The session pushes
+  focus in with `reportFocus()` and reads the roster out with `useRoster()`.
+  Shared browser identity lives in `src/lib/user-id.ts`, not in a feature.
+- Preserve field ownership when applying presence: chat can update the local
+  display name, but must keep the profile's selected passenger sprite.
+  Friend focus/name updates must retain active `speech`; only the speech
+  driver decides when a line ends. Cover these rules in session tests.
+- All rails and scenery scroll with the local train. Companion trains move
+  relative to that shared world; do not give their tracks independent scroll.
+  Stations belong to the local lane. `regroup()` resets relative motion when
+  new participants arrive.
 - Character sprites are 500x500 PNGs with transparent margins in
   `apps/web/public/characters/`. Every sprite maps whole onto the same square
   plane, so how much canvas a drawing fills is how big it is in the world.
-- `train.speech` is set by `say` and cleared only by `features/speech`. The
-  scene shows a bubble and bobs the conductor sprite while it is set and knows
-  nothing about clips or timing.
-- Adding a character drawing: add its id to `avatarIdSchema` in shared, the
-  PNG to `apps/web/public/characters/`, and its display name in
-  `features/profile/avatars.ts`. Adding a voice line: drop the clip in
-  `apps/web/public/audio/` and register it in `features/speech/lines.ts`.
+  The fixed conductor rides the locomotive; the selected avatar rides the cart.
+  Conductor bounce must stay at or above its resting height.
+- `train.speech` is set by `say` and cleared by the speech driver through
+  `clearSpeech(trainId, speechId)`, so an old clip cannot clear a newer line.
+  The scene supplies `createVoiceAudio`, camera/listener updates, and conductor
+  positions; speech owns playback/fallback timers and disposes the output on
+  unmount. Keep rendering separate from playback lifetime and world writes.
+- Profile GET/PUT requests have a timeout: session boarding waits for profile
+  success or failure and falls back to the default avatar on failure. Keep
+  local-train creation idempotent under React StrictMode.
+- Adding a character: add its id to `avatarIdSchema` in shared, its PNG to
+  `apps/web/public/characters/`, its name to `features/profile/avatars.ts`, and
+  update the schema/picker tests. Do not change the shared canvas convention.
+- Adding a voice line: put the clip in `apps/web/public/audio/`, register it in
+  `features/speech/lines.ts`, and wire a trigger through `say`. A committed
+  recording alone does not play automatically. Use accurate captions when
+  transcripts are available; existing registry captions are placeholders.
+- Conductor API tools use `conductor/harness.ts` and `provider/index.ts` for
+  validation, retries, provider/model selection, and fixture fallback. Keep
+  model names in environment configuration and dependencies injectable so
+  tests never call LLMs or MongoDB. Public responses must strip answer keys.
