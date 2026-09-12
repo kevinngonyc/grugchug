@@ -118,3 +118,4 @@ dist
 
 # Claude Code worktrees (linked checkouts, never committed)
 .claude/worktrees/
+.superpowers/
