@@ -93,8 +93,9 @@ All from the repo root.
   `apps/web/public/characters/`, its name to `features/profile/avatars.ts`, and
   update the schema/picker tests. Do not change the shared canvas convention.
 - Adding a voice line: put the clip in `apps/web/public/audio/`, register it in
-  `features/speech/lines.ts`, and wire a trigger through `say`. A committed
-  recording alone does not play automatically. Use accurate captions when
+  `features/speech/lines.ts`, and wire a trigger: a phase transition in
+  `features/speech/departure.ts`, or a `sayLine(id)` call for events the world
+  does not see. A committed recording alone does not play automatically. Use accurate captions when
   transcripts are available; existing registry captions are placeholders.
 - Conductor API tools use `conductor/harness.ts` and `provider/index.ts` for
   validation, retries, provider/model selection, and fixture fallback. Keep

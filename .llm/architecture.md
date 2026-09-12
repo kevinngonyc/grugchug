@@ -32,7 +32,7 @@ through `src/features/<feature>/index.ts`.
 | `src/features/session/` | Drives local efficiency, sends focus to chat, and maps the chat roster to companion trains |
 | `src/features/world/` | Zustand train intent: owners, phases, efficiency, speech, local train ID, and regroup count. No three.js |
 | `src/features/profile/` | Loads/saves the browser's profile, defines the avatar catalog, and renders the Settings picker |
-| `src/features/speech/` | Voice-line registry, departure announcements, playback/fallback timing, and clearing finished utterances |
+| `src/features/speech/` | Voice-line registry, phase announcements for the local train (start, break, restart, finish), `sayLine` for events the world does not see, playback/fallback timing, and clearing finished utterances |
 | `src/features/scene/` | Train models, shared scrolling environment, relative companion motion, stations, sprites, speech bubbles, and positional audio output. Reads world state only |
 | `src/features/chat/` | The current room, messages, identity/display name, invite links, socket lifecycle, and live roster |
 | `src/lib/user-id.ts` | Browser-generated ID in localStorage, shared by profile and first-time chat requests |
