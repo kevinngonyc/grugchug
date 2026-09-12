@@ -16,7 +16,11 @@ boundaries. Read it before adding code.
 - `apps/web/` — Vite + React + TypeScript. Tailwind v4, shadcn/ui,
   react-three-fiber, react-router.
 - `apps/api/` — Bun HTTP server, framework-free (`Bun.serve` routes). SQLite
-  via `bun:sqlite`, one local file, nothing to run alongside it.
+  via `bun:sqlite`, one local file, nothing to run alongside it. Every
+  non-`/api` path serves the built web app (`src/static.ts`, `WEB_DIST`), so
+  one process is the whole production deployment.
+- `deploy/` — systemd unit and install script for a single Ubuntu box behind
+  Cloudflare Tunnel; `docs/deploy.md` is the guide.
 - `packages/shared/` — zod schemas and types both apps import as
   `@grugchug/shared`.
 - `docs/specs/` — design docs, named `YYYY-MM-DD-<topic>-design.md`.

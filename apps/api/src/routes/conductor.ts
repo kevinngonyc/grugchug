@@ -23,7 +23,6 @@ import {
   evaluateProgressRequestSchema,
   evaluateProgressResponseSchema,
   type Material,
-  PASS_THRESHOLD,
   publicRoutePlanSchema,
   publicStationSchema,
   type Question,
@@ -32,13 +31,13 @@ import {
   type Station,
   setTimerRequestSchema,
   setTimerResponseSchema,
+  stationVerdict,
 } from "@grugchug/shared";
 import { fallbackReason } from "../conductor/harness";
 import {
-  getPlanMaterials,
+  getMaterialsForPlan,
   getRoutePlanById,
-  savePlanMaterials,
-  saveRoutePlan,
+  saveRoutePlanWithMaterials,
   updateRoutePlan,
 } from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
@@ -83,10 +82,7 @@ const defaultCreatePlanDeps: CreatePlanDeps = {
   runPlanRoute: planRouteTool.run,
   runGenerateQuestions: generateQuestionsTool.run,
   // The plan, and the files it came from for the TA to answer from later.
-  save: async (plan, materials) => {
-    await saveRoutePlan(plan);
-    await savePlanMaterials(plan.id, materials);
-  },
+  save: saveRoutePlanWithMaterials,
 };
 
 type Generated = { ok: true; questions: Question[] } | { ok: false; reason: string };
@@ -271,14 +267,14 @@ export function answerStation(req: WithParams<"stationId">): Promise<Response> {
 }
 
 export interface RegenerateStationDeps extends PlanLookupDeps {
-  getMaterials: typeof getPlanMaterials;
+  getMaterials: typeof getMaterialsForPlan;
   runGenerateQuestions: typeof generateQuestionsTool.run;
   save: typeof updateRoutePlan;
 }
 
 const defaultRegenerateStationDeps: RegenerateStationDeps = {
   get: getRoutePlanById,
-  getMaterials: getPlanMaterials,
+  getMaterials: getMaterialsForPlan,
   runGenerateQuestions: generateQuestionsTool.run,
   save: updateRoutePlan,
 };
@@ -302,7 +298,7 @@ export async function regenerateStationWithDeps(
   const station = stationIndex === -1 ? undefined : found.plan.stations[stationIndex];
   if (!station) return Response.json({ error: "station not found" }, { status: 404 });
 
-  const materials = await deps.getMaterials(planId).catch(() => null);
+  const materials = await deps.getMaterials(found.plan).catch(() => null);
   if (!materials) {
     return Response.json(
       { error: "This plan has no stored material to regenerate questions from." },
@@ -340,13 +336,13 @@ export function regenerateStation(req: WithParams<"stationId">): Promise<Respons
 }
 
 export interface AskConductorDeps extends PlanLookupDeps {
-  getMaterials: typeof getPlanMaterials;
+  getMaterials: typeof getMaterialsForPlan;
   runAsk: typeof askConductorTool.run;
 }
 
 const defaultAskConductorDeps: AskConductorDeps = {
   get: getRoutePlanById,
-  getMaterials: getPlanMaterials,
+  getMaterials: getMaterialsForPlan,
   runAsk: askConductorTool.run,
 };
 
@@ -363,9 +359,9 @@ export async function askConductorWithDeps(
 
   const station = stationId ? found.plan.stations.find((s) => s.id === stationId) : undefined;
   const scope = station?.scope ?? found.plan.stations.map((s) => s.scope).join("\n");
-  // A plan built before materials were stored has none; the TA answers from
-  // the scope, as it always did.
-  const materials = await deps.getMaterials(planId).catch(() => null);
+  // A plan whose materials were never stored, or were pruned, has none; the
+  // TA answers from the scope, as it always did.
+  const materials = await deps.getMaterials(found.plan).catch(() => null);
 
   const result = await deps.runAsk({
     scope,
@@ -439,11 +435,9 @@ export async function evaluateProgressWithDeps(
     );
   }
 
-  // The verdict is the score, not the model's opinion: the same mean the web
-  // shows as "overall", against the same threshold. The epsilon keeps a mean
-  // that is 0.7 up to float rounding on the passing side.
-  const meanScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
-  const passed = meanScore + 1e-9 >= PASS_THRESHOLD;
+  // The verdict is the score, not the model's opinion: the same call the web
+  // uses for the "overall" it shows, decided on the same whole percent.
+  const { meanScore, passed } = stationVerdict(results.map((r) => r.score));
 
   const result = await deps.runEvaluate({ scope: station.scope, results, passed, meanScore });
   return Response.json(

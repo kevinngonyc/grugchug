@@ -31,7 +31,7 @@ through `src/features/<feature>/index.ts`.
 | Path | Responsibility |
 |---|---|
 | `src/app.tsx`, `src/routes/` | Session-first app with no navbar: `/` and legacy `/settings` redirect to `/session`; history remains at `/dashboard`; invite landing page and old chat redirects |
-| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Webcam preview and diagnostics are dev-only, and `?nogaze` turns tracking off entirely as a measuring stick for its main-thread cost |
+| `src/features/gaze/` | MediaPipe Face Landmarker head-pose tracking and local ONNX face predictions; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Face prediction is temporarily disabled: its HUD is commented out and `FACE_PREDICTION_ENABLED` is false, so no ONNX worker starts or frames are buffered for prediction. The preserved prediction code displays experimental scores from `ml/face.onnx` using a sliding window of the latest 30 camera frames of normalized 478-point xyz landmarks (about one second at 30 fps). Every new frame advances the window; an ONNX worker processes the newest pending window as soon as it is free, without queuing stale windows. Those scores do not change efficiency. Webcam preview and head-pose diagnostics are dev-only, and `?nogaze` turns tracking off entirely as a measuring stick for its main-thread cost |
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
 | `src/features/session/` | Drives local efficiency, banks today's focused time (`focus-time.ts`) and pushes it with focus and journey status into chat, and maps the chat roster to companion trains that stop at their own stations |
@@ -47,6 +47,18 @@ through `src/features/<feature>/index.ts`.
 | `src/styles/index.css` | Tailwind imports and shared styling |
 | `public/models/` | Kenney GLBs and the Train Kit texture atlas |
 | `public/characters/`, `public/audio/` | Transparent avatar PNGs and conductor recordings |
+
+`bun run dev` and `bun run build` currently copy only the MediaPipe landmarker
+and its WASM assets to ignored `public/face-models/`. ONNX asset preparation is
+disabled along with prediction. Keep `face.onnx`,
+`face.onnx.data`, and `face_landmarker.task` together in `ml/`; the external
+weights are required. No webcam images or landmarks leave the browser.
+The prediction panel shows completed-inference and source-frame counters,
+inference time, and RMS input change so a static score can be distinguished
+from a stalled pipeline. A browser check of the current model on 2026-09-12
+found that all-zero, all-one, and sinusoidal inputs produce scores differing
+by only about 1e-7. The current model appears nearly input-insensitive;
+re-running inference does not make these scores meaningfully responsive.
 
 ## State ownership and data flow
 
@@ -183,6 +195,7 @@ someone else's. The latest `chatMembers.joinedAt` determines the current room.
 
 | Endpoint | Purpose |
 |---|---|
+| `GET /api/chat/invite-host` | Supplies `server.hostname` for invite links, resolving wildcard/loopback bindings to the first external IPv4 address; the frontend keeps its own protocol and port |
 | `POST /api/chat/room` | Resolve or create the caller's current room |
 | `POST /api/chat/rooms/join` | Join via an invite link |
 | `GET /api/chat/rooms/:roomId/messages` | Paginated history; accepts `before` |

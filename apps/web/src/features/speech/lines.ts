@@ -6,23 +6,23 @@ export type VoiceLine = { text: string; audioUrl: string };
 export const VOICE_LINES = {
   startSession: {
     text: "All aboard! Let's get this study session rolling.", // PLACEHOLDER caption
-    audioUrl: "/audio/start_session1.mp3",
+    audioUrl: "/audio/start_sessioncensored.mp3",
   },
   takeBreak: {
     text: "Pulling into the station. Take a breather.", // PLACEHOLDER caption
-    audioUrl: "/audio/take_break1.mp3",
+    audioUrl: "/audio/take_breakcensored.mp3",
   },
   restartStudy: {
     text: "Break's over. Back on the rails!", // PLACEHOLDER caption
-    audioUrl: "/audio/restart_study1.mp3",
+    audioUrl: "/audio/restart_studycensored.mp3",
   },
   greatSession: {
     text: "Great session! You kept this train right on time.", // PLACEHOLDER caption
-    audioUrl: "/audio/great_session1.mp3",
+    audioUrl: "/audio/great_sessioncensored.mp3",
   },
   passQuiz: {
     text: "Quiz passed. Full steam ahead!", // PLACEHOLDER caption
-    audioUrl: "/audio/pass_quiz1.mp3",
+    audioUrl: "/audio/pass_quizcensored.mp3",
   },
 } as const satisfies Record<string, VoiceLine>;
 

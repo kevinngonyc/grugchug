@@ -42,6 +42,29 @@ describe("runTool", () => {
     expect(result.trace[0]).toMatchObject({ tier: "flash", escalated: false, ok: true });
   });
 
+  test.each(['\uFEFF {"answer": 42} ', '```json\n{"answer": 42}\n```', '```\n{"answer": 42}\n```'])(
+    "accepts harmless JSON wrappers: %s",
+    async (text) => {
+      const result = await runTool(makeSpec({ cache: false }), { q: "wrapped" }, () =>
+        fakeProvider("gemini", "test", text),
+      );
+      expect(result.output).toEqual({ answer: 42 });
+      expect(result.trace).toHaveLength(1);
+      expect(result.fellBackToFixture).toBe(false);
+    },
+  );
+
+  test.each(['```json\n{"answer":\n```', 'Here: {"answer": 42}', ""])(
+    "retries malformed output and falls back safely: %s",
+    async (text) => {
+      const result = await runTool(makeSpec({ cache: false }), { q: "malformed" }, () =>
+        fakeProvider("gemini", "test", text),
+      );
+      expect(result.fellBackToFixture).toBe(true);
+      expect(result.trace.filter((entry) => !entry.ok)).toHaveLength(4);
+    },
+  );
+
   test("retries flash on invalid JSON, then succeeds", async () => {
     const spec = makeSpec();
     let calls = 0;

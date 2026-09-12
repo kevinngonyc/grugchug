@@ -199,3 +199,5 @@ export const serverChatEventSchema = z.discriminatedUnion("type", [
 
 export type ClientChatEvent = z.infer<typeof clientChatEventSchema>;
 export type ServerChatEvent = z.infer<typeof serverChatEventSchema>;
+
+export const inviteHostResponseSchema = z.object({ hostname: z.string().min(1) });

@@ -20,7 +20,11 @@ class FakeAudio implements AudioLike {
   disposed = false;
   playCalls = 0;
   rejectPlay = false;
-  private listeners: Record<"ended" | "error", (() => void)[]> = { ended: [], error: [] };
+  private listeners: Record<"ended" | "error" | "playing", (() => void)[]> = {
+    ended: [],
+    error: [],
+    playing: [],
+  };
 
   constructor(url: string) {
     this.url = url;
@@ -32,13 +36,13 @@ class FakeAudio implements AudioLike {
   pause(): void {
     this.paused = true;
   }
-  addEventListener(type: "ended" | "error", listener: () => void): void {
+  addEventListener(type: "ended" | "error" | "playing", listener: () => void): void {
     this.listeners[type].push(listener);
   }
   dispose(): void {
     this.disposed = true;
   }
-  fire(type: "ended" | "error"): void {
+  fire(type: "ended" | "error" | "playing"): void {
     for (const l of this.listeners[type]) l();
   }
 }
@@ -103,6 +107,34 @@ describe("createSpeechPlayer", () => {
     expect(speechOf("local")?.text).toBe("All aboard!");
     audios[0]?.fire("ended");
     expect(speechOf("local")).toBeUndefined();
+  });
+
+  test("recovered playback cancels the text timer and lasts until the clip ends", () => {
+    const { audios, timers, player } = setup();
+    player.start();
+    useWorld.getState().say("local", "Hi", "/voices/long.mp3");
+    audios[0]?.fire("error");
+    expect(timers.pending).toHaveLength(1);
+    audios[0]?.fire("playing");
+    expect(timers.pending).toHaveLength(0);
+    timers.runAll();
+    expect(speechOf("local")?.text).toBe("Hi");
+    expect(audios[0]?.paused).toBe(false);
+    audios[0]?.fire("ended");
+    expect(speechOf("local")).toBeUndefined();
+    player.stop();
+  });
+
+  test("clearing speech stops its audio immediately", () => {
+    const { audios, player } = setup();
+    player.start();
+    useWorld.getState().say("local", "Hi", "/voices/1.mp3");
+    const speech = speechOf("local");
+    if (!speech) throw new Error("missing speech");
+    useWorld.getState().clearSpeech("local", speech.id);
+    expect(audios[0]?.paused).toBe(true);
+    expect(audios[0]?.disposed).toBe(true);
+    player.stop();
   });
 
   test("a rejected play falls back to the text timer", async () => {

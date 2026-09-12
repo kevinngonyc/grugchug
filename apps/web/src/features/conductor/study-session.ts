@@ -6,12 +6,13 @@
 //
 // Refresh starts a fresh sitting. Saved metadata is only used to close the
 // previous history record; it never restores a route or timer automatically.
-import type {
-  Answer,
-  AnswerResult,
-  ProgressResult,
-  PublicRoutePlan,
-  PublicStation,
+import {
+  type Answer,
+  type AnswerResult,
+  type ProgressResult,
+  type PublicRoutePlan,
+  type PublicStation,
+  stationVerdict,
 } from "@grugchug/shared";
 import { create } from "zustand";
 import { useEfficiency } from "@/features/efficiency";
@@ -181,13 +182,13 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         plan = await getPlan(library.planId).catch(() => null);
       }
       if (revision !== sessionRevision) return;
-      if (!plan || plan.usedFallback) {
+      if (!plan) {
         plan = await createPlan({
           userId: getUserId(),
           materials: library.items.map((item) => item.material),
         });
         if (revision !== sessionRevision) return;
-        useMaterialLibrary.getState().setPlanId(plan.usedFallback ? null : plan.id);
+        useMaterialLibrary.getState().setPlanId(plan.id);
       }
       get().startSession(plan);
     } catch (error) {
@@ -462,8 +463,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       return;
     }
 
-    const scores = station.questions.map((q) => results[q.id]?.score ?? 0);
-    const meanScore = scores.reduce((sum, s) => sum + s, 0) / Math.max(1, scores.length);
+    const { meanScore } = stationVerdict(station.questions.map((q) => results[q.id]?.score ?? 0));
     useEfficiency.getState().report(QUIZ_SOURCE, meanScore, {
       label: "Quiz",
       weight: QUIZ_WEIGHT,

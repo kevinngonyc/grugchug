@@ -5,11 +5,18 @@ import {
   publicRoutePlanSchema,
   publicStationSchema,
   questionSchema,
+  routePlanSchema,
   type Station,
   setTimerRequestSchema,
   setTimerResponseSchema,
   stationSchema,
 } from "./conductor";
+
+describe("routePlanSchema", () => {
+  test("carries no sample-content flag: the API refuses a fallback route rather than saving one", () => {
+    expect("usedFallback" in routePlanSchema.shape).toBe(false);
+  });
+});
 
 const station: Station = {
   id: "st-1",

@@ -9,6 +9,8 @@ import {
   type PublicQuestion,
   type PublicRoutePlan,
   type PublicStation,
+  percentOf,
+  stationVerdict,
 } from "@grugchug/shared";
 import { Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -142,12 +144,6 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
           </li>
         ))}
       </ol>
-      {plan.usedFallback && (
-        <p role="alert" className="text-sm text-destructive">
-          Some content is a sample because generation failed. Regenerate the route to try your
-          materials again.
-        </p>
-      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <button
         type="button"
@@ -218,15 +214,10 @@ function scoreLabel(question: PublicQuestion, result: AnswerResult): string {
   return result.passed ? "✓ Correct" : "✗ Incorrect";
 }
 
-function overallScore(results: Record<string, AnswerResult>): number {
-  const scores = Object.values(results).map((r) => r.score);
-  if (scores.length === 0) return 0;
-  return scores.reduce((sum, s) => sum + s, 0) / scores.length;
-}
-
 // The headline the learner actually asked for: did I pass, and what was my
 // overall score — separate from, and above, the per-question breakdown. The
-// API passes a station at PASS_THRESHOLD of this same mean, so the two agree.
+// percent is the same stationVerdict() call the API decided `passed` with,
+// so the two can never disagree.
 function ResultBanner({
   passed,
   results,
@@ -234,14 +225,15 @@ function ResultBanner({
   passed: boolean;
   results: Record<string, AnswerResult>;
 }) {
+  const { percent } = stationVerdict(Object.values(results).map((r) => r.score));
   return (
     <div
       className={`rounded-lg px-3 py-2 text-sm font-semibold ${
         passed ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
       }`}
     >
-      {passed ? "✓ Passed" : "✗ Not passed yet"} — {Math.round(overallScore(results) * 100)}%
-      overall (pass mark {Math.round(PASS_THRESHOLD * 100)}%)
+      {passed ? "✓ Passed" : "✗ Not passed yet"} — {percent}% overall (pass mark{" "}
+      {percentOf(PASS_THRESHOLD)}%)
     </div>
   );
 }
