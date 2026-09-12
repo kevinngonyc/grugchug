@@ -18,5 +18,12 @@ export const secondaryButtonClass =
   "px-3 py-2 text-sm font-medium transition-colors hover:bg-accent " +
   "disabled:pointer-events-none disabled:opacity-50";
 
+// No --destructive-foreground token exists in this theme (checked
+// styles/index.css) — white reads fine against --destructive's red.
+export const destructiveButtonClass =
+  "inline-flex items-center justify-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm " +
+  "font-medium text-white transition-opacity hover:opacity-90 " +
+  "disabled:pointer-events-none disabled:opacity-50";
+
 export const labelClass = "text-sm font-medium";
 export const cardClass = "rounded-lg border p-4";
