@@ -10,6 +10,8 @@ export default defineConfig({
   },
   server: {
     // The API runs on its own port in dev; keep the browser same-origin.
-    proxy: { "/api": "http://localhost:3000" },
+    // ws: true is what makes the chat socket at /api/chat/ws upgrade through
+    // the proxy instead of being served as a plain HTTP request.
+    proxy: { "/api": { target: "http://localhost:3000", ws: true } },
   },
 });
