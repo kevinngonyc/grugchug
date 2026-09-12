@@ -6,9 +6,8 @@
 // if the locomotive turns out to face backwards.
 export const KIT_ROTATION_Y = Math.PI / 2;
 
-// Parallel lanes keep the locomotives abreast.
+// Lanes sit one behind another, further from the camera, with the trains abreast.
 export const LANE_SPACING = 4; // metres deeper into the screen per lane
-export const LANE_STAGGER = 0; // no longitudinal offset between trains
 
 // Track: railroad-straight.glb is 4 m long with its origin at one end and
 // sits 1 m below its origin (measured), so lifting it by 1 puts rail top at 0.1.

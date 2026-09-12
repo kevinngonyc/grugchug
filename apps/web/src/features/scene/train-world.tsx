@@ -27,7 +27,7 @@ export function TrainWorld() {
       <color attach="background" args={[SKY_COLOR]} />
       <fog attach="fog" args={[SKY_COLOR, 30, 70]} />
       <ambientLight intensity={0.8} />
-      <directionalLight position={[10, 15, 10]} intensity={1.4} />
+      <directionalLight position={[10, 15, -10]} intensity={1.4} />
       <Suspense fallback={null}>
         <TravellingWorld />
       </Suspense>
