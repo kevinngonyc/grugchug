@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { type TrainPhase, useWorld } from "@/features/world";
+import { cn } from "@/lib/utils";
 
 const FRIEND_NAMES = ["Ada", "Grace", "Linus", "Margaret", "Dennis"];
 const PHASES: TrainPhase[] = ["running", "stopped", "finished"];
@@ -11,6 +12,7 @@ export function SessionDevPanel() {
   const local = useWorld((s) => (s.localTrainId === null ? undefined : s.trains[s.localTrainId]));
   const trainCount = useWorld((s) => Object.keys(s.trains).length);
   const timers = useRef<ReturnType<typeof setInterval>[]>([]);
+  const friendCounter = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -22,21 +24,25 @@ export function SessionDevPanel() {
   const w = useWorld.getState();
 
   const addFriend = () => {
-    const id = `friend-${trainCount}`;
+    const id = `friend-${friendCounter.current++}`;
+    const liveTrainCount = Object.keys(useWorld.getState().trains).length;
     w.addTrain({
       id,
       owner: {
-        name: FRIEND_NAMES[trainCount % FRIEND_NAMES.length] ?? "Friend",
+        name: FRIEND_NAMES[liveTrainCount % FRIEND_NAMES.length] ?? "Friend",
         spriteUrl: "/characters/default.svg",
       },
       phase: "running",
       efficiency: 0.3 + Math.random() * 0.6,
-      lane: trainCount,
+      lane: liveTrainCount,
     });
     const timer = setInterval(
       () => {
         const current = useWorld.getState().trains[id];
-        if (!current) return clearInterval(timer);
+        if (!current) {
+          clearInterval(timer);
+          return;
+        }
         w.setPhase(id, current.phase === "running" ? "stopped" : "running");
       },
       8000 + Math.random() * 7000,
@@ -45,7 +51,12 @@ export function SessionDevPanel() {
   };
 
   return (
-    <div className="absolute top-4 right-4 flex w-56 flex-col gap-3 rounded-lg border bg-background/90 p-4 text-sm shadow">
+    <div
+      className={cn(
+        "absolute top-4 right-4 flex w-56 flex-col gap-3",
+        "rounded-lg border bg-background/90 p-4 text-sm shadow",
+      )}
+    >
       <div className="font-semibold">Dev: {local.owner.name}</div>
       <div className="flex gap-2">
         {PHASES.map((phase) => (
