@@ -1,7 +1,8 @@
+import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
-import { useWorld } from "@/features/world";
+import { targetSpeed, useWorld } from "@/features/world";
 import { LANE_SPACING } from "./constants";
-import { createMotion, registerMotion, unregisterMotion } from "./motion";
+import { createMotion, registerMotion, stepMotion, unregisterMotion } from "./motion";
 import { Track } from "./track";
 import { Train } from "./train";
 
@@ -16,6 +17,13 @@ export function Lane({ trainId }: LaneProps) {
     registerMotion(trainId, motion.current);
     return () => unregisterMotion(trainId);
   }, [trainId]);
+
+  useFrame((_, dt) => {
+    const train = useWorld.getState().trains[trainId];
+    if (!train) return;
+    const cruise = targetSpeed({ phase: "running", efficiency: train.efficiency });
+    stepMotion(motion.current, cruise, targetSpeed(train), Math.min(dt, 0.1));
+  });
 
   return (
     <group position-z={-lane * LANE_SPACING}>
