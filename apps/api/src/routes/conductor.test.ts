@@ -618,6 +618,13 @@ describe("evaluateProgress", () => {
     expect((await under.json()).passed).toBe(false);
   });
 
+  test("decides on the whole percent the learner sees, so 69.5% is the 70% it reads as", async () => {
+    // Otherwise the panel would show "70% overall (pass mark 70%)" beside
+    // "not passed", and the feedback prompt would tell the model the same.
+    const rounded = await evaluate({ planId: "p1", results: resultsScoring(1, 1, 0.78, 0) });
+    expect((await rounded.json()).passed).toBe(true);
+  });
+
   test("rejects a result whose questionId is not in this station", async () => {
     const res = await evaluate({
       planId: "p1",

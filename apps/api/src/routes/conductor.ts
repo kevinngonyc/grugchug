@@ -23,12 +23,12 @@ import {
   evaluateProgressRequestSchema,
   evaluateProgressResponseSchema,
   type Material,
-  PASS_THRESHOLD,
   publicRoutePlanSchema,
   type RoutePlan,
   type Station,
   setTimerRequestSchema,
   setTimerResponseSchema,
+  stationVerdict,
 } from "@grugchug/shared";
 import { fallbackReason } from "../conductor/harness";
 import {
@@ -351,11 +351,9 @@ export async function evaluateProgressWithDeps(
     );
   }
 
-  // The verdict is the score, not the model's opinion: the same mean the web
-  // shows as "overall", against the same threshold. The epsilon keeps a mean
-  // that is 0.7 up to float rounding on the passing side.
-  const meanScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
-  const passed = meanScore + 1e-9 >= PASS_THRESHOLD;
+  // The verdict is the score, not the model's opinion: the same call the web
+  // uses for the "overall" it shows, decided on the same whole percent.
+  const { meanScore, passed } = stationVerdict(results.map((r) => r.score));
 
   const result = await deps.runEvaluate({ scope: station.scope, results, passed, meanScore });
   return Response.json(

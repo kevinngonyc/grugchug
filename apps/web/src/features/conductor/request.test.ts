@@ -22,7 +22,10 @@ test("a 503 that carries the API's own reason shows that reason, not the start-u
       "/conductor/plans",
       schema,
       {},
-      respond(503, JSON.stringify({ error: "AI provider unavailable: GROQ_FLASH_MODEL is not set" })),
+      respond(
+        503,
+        JSON.stringify({ error: "AI provider unavailable: GROQ_FLASH_MODEL is not set" }),
+      ),
     ),
   ).rejects.toThrow("AI provider unavailable: GROQ_FLASH_MODEL is not set");
 });

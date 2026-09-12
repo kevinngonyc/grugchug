@@ -15,7 +15,11 @@ describe("askHistory", () => {
   });
 
   test("sends the last few answered exchanges and skips one still being answered", () => {
-    const entries = [answered(1), { id: "pending", question: "waiting", answer: null }, answered(2)];
+    const entries = [
+      answered(1),
+      { id: "pending", question: "waiting", answer: null },
+      answered(2),
+    ];
     expect(askHistory(entries)).toEqual([
       { question: "question 1", answer: "answer 1" },
       { question: "question 2", answer: "answer 2" },

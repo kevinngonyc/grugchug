@@ -237,9 +237,30 @@ export const evaluateProgressRequestSchema = z.object({
 export type EvaluateProgressRequest = z.infer<typeof evaluateProgressRequestSchema>;
 
 // A station is passed when the mean of its questions' scores reaches this.
-// The API decides with it and the web labels the overall score with it, so
-// the verdict and the score on screen can never disagree.
+// The API decides with stationVerdict() and the web labels the overall score
+// with the same call, so the verdict and the score on screen never disagree.
 export const PASS_THRESHOLD = 0.7;
+
+/** A 0..1 fraction as the whole percent it is shown as. */
+export function percentOf(fraction: number): number {
+  return Math.round(fraction * 100);
+}
+
+/**
+ * The one verdict for a station's quiz. Decided on the whole percent the
+ * learner sees, not the raw mean: a mean of 0.695 reads "70%" on screen, and
+ * "70% overall (pass mark 70%) — not passed" would be a contradiction.
+ */
+export function stationVerdict(scores: readonly number[]): {
+  meanScore: number;
+  percent: number;
+  passed: boolean;
+} {
+  const meanScore =
+    scores.length === 0 ? 0 : scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const percent = percentOf(meanScore);
+  return { meanScore, percent, passed: percent >= percentOf(PASS_THRESHOLD) };
+}
 
 // Reply to POST /api/conductor/stations/:stationId/evaluate: can the learner
 // move on to the next station?
