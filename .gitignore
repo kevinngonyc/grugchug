@@ -115,3 +115,6 @@ dist
 
 # --- Project ---
 .claude/settings.local.json
+
+# Claude Code worktrees (linked checkouts, never committed)
+.claude/worktrees/

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Each train's rider is the avatar its owner picked, stored under a browser-generated user id on the API, and when a train has speech the rider bobs and shows a bubble for as long as the voice clip plays.
+**Goal:** Each train's passenger is the avatar its owner picked, stored under a browser-generated user id on the API, and when a train has speech its conductor bobs and shows a bubble for as long as the voice clip plays.
 
-**Architecture:** `packages/shared` gains an avatar enum on `user`, a `userProfile` PUT body, and an optional `speech` on `trainState`. The world store gets `say`, `clearSpeech`, and `setOwner`. A new `features/speech` driver watches the store, plays each utterance once (clip, or a text-length timer), and clears it when done. `features/scene` renders a bob and a drei `Html` bubble while `train.speech` is set and never writes. A new `features/profile` owns the localStorage user id, the avatar catalog, and a store that talks to new `GET`/`PUT /api/users/:id` routes backed by a small repo interface so tests stay offline.
+**Architecture:** `packages/shared` gains an avatar enum on `user`, a `userProfile` PUT body, and an optional `speech` on `trainState`. The world store gets `say`, `clearSpeech`, and `setOwner`. A new `features/speech` driver watches the store, plays each utterance once (clip, or a text-length timer), and clears it when done. `features/scene` renders a bob and a drei `Html` bubble on the conductor sprite while `train.speech` is set and never writes. A new `features/profile` owns the avatar catalog and a store that talks to new `GET`/`PUT /api/users/:id` routes backed by a small repo interface so tests stay offline. The browser user id lives in `src/lib/user-id.ts` so `profile` and the existing `chat` feature share one identity without importing each other.
 
 **Tech Stack:** Bun 1.3, TypeScript 6 (strict, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noUncheckedIndexedAccess`), React 19, zustand 5, three 0.183, @react-three/fiber 9, @react-three/drei 10.7, zod 4.6, mongodb 6.21, Tailwind v4 + tw-animate-css, Biome 2, `bun test` + happy-dom 20, @testing-library/react 16.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Work in a git worktree branched from `train-world` at commit `93231fe` (or later on that branch). Another session shares the main working tree; never run `git add -A` or `git add .` there. Always `git add` explicit paths.
+- Work in the git worktree at `.claude/worktrees/conductors` on branch `worktree-conductors`, created from `main` at commit `34f2b5a`. `main` is the integration branch; teammates merge to it by pull request. Other sessions share the main working tree; never run `git add -A` or `git add .` anywhere in this repo. Always `git add` explicit paths.
 - All commands run from the repo root unless a step says otherwise. `bun run typecheck`, `bun run test`, `bun run lint`, `bun run build` must pass at the end of every task.
 - File names are kebab-case. Components are named exports. No default exports.
 - `import type` for type-only imports (`verbatimModuleSyntax`). No enums, no parameter properties (`erasableSyntaxOnly`). Record and array index lookups return `T | undefined` (`noUncheckedIndexedAccess`), so guard them with `?.` or `??`.
@@ -31,15 +31,19 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU
 
 ## Facts about the current code (verified)
 
-- `apps/web/src/features/scene/train.tsx` renders `<Suspense fallback={null}><Character url={spriteUrl} /></Suspense>` after `<Smoke>`, with `spriteUrl` read from `useWorld((s) => s.trains[trainId]?.owner.spriteUrl)`.
-- `apps/web/src/features/scene/character.tsx` is a `Billboard` at `CHARACTER_OFFSET` holding a `planeGeometry` of `CHARACTER_SIZE = [1.6, 1.6]` with a `useTexture` map.
-- `apps/web/src/features/scene/constants.ts` already defines `CHARACTER_OFFSET = [-0.6, LOCOMOTIVE_HEIGHT + 0.4, 0]`, `CHARACTER_SIZE = [1.6, 1.6]`, `CAMERA_POSITION = [0, 4, 22]`, `CAMERA_FOV = 35`, `LANE_SPACING = 4`.
+- `apps/web/src/features/scene/train.tsx` renders two sprites per train after `<Smoke>`, each in its own `<Suspense fallback={null}>`: a fixed conductor, `<Character url={CONDUCTOR_SPRITE_URL} position={CONDUCTOR_OFFSET} />`, on the locomotive, and the owner's avatar, `<Character url={spriteUrl} />`, on the carriage, where `spriteUrl` comes from `useWorld((s) => s.trains[trainId]?.owner.spriteUrl)`. Teammates placed these in commit `8c3a1e6`; this plan keeps that split. The conductor is the agent and is the one that talks; the picked avatar is the passenger.
+- `apps/web/src/features/scene/character.tsx` takes `{ url: string; position?: [number, number, number] }` (default `CHARACTER_OFFSET`) and is a `Billboard` holding a `planeGeometry` of `CHARACTER_SIZE = [1.6, 1.6]` with a `useTexture` map.
+- `apps/web/src/features/scene/constants.ts` defines `CHARACTER_OFFSET = [-CARRIAGE_GAP, CARRIAGE_HEIGHT + 0.4, 0]`, `CONDUCTOR_OFFSET = [-0.6, LOCOMOTIVE_HEIGHT + 0.4, 0]`, `CONDUCTOR_SPRITE_URL = "/characters/conductor.png"`, `CHARACTER_SIZE = [1.6, 1.6]`, `CAMERA_POSITION = [-1.4, 5, -12]`, `CAMERA_FOV = 35`, `LANE_SPACING = 4`, `LANE_STAGGER = 0`. The camera is about 12 to 13 m from lane 0.
+- `apps/web/src/features/scene/train-world.tsx` owns one shared motion for every lane and passes it to `<Lane trainId motion />`.
 - `apps/web/src/features/world/store.ts` has a private `patchTrain(s, id, patch)` helper returning `{}` for unknown ids, and `removeTrain` already uses `delete`, so Biome accepts `delete` here.
-- `apps/web/src/routes/session.tsx` creates the local train with a hardcoded `owner: { name: "You", spriteUrl: "/characters/poku.png" }`.
+- `apps/web/src/routes/session.tsx` creates the local train with a hardcoded `owner: { name: "You", spriteUrl: "/characters/poku.png" }` and also renders `<Gaze debug={dev} />` from `@/features/gaze` in a bottom-left box. Keep that.
 - `apps/web/src/routes/session-dev-panel.tsx` keeps interval handles in `useRef<ReturnType<typeof setInterval>[]>` and uses `cn` from `@/lib/utils`. Friend trains use `/characters/bonbon.png`.
-- `apps/api/src/index.ts` is `Bun.serve({ routes: { "/api/health": health }, fetch() {...} })`. Bun types `req` in a `"/api/users/:id"` handler as `BunRequest<"/api/users/:id">` with `req.params.id: string`.
+- `apps/api/src/index.ts` is `Bun.serve({ port, websocket: chatWebSocket, routes: { "/api/health": health, "/api/conductor/...": ..., "/api/chat/...": ... }, fetch() {...} })`. Route values are `{ GET: handler, POST: handler }` objects. Bun types `req` in a `"/api/users/:id"` handler as `BunRequest<"/api/users/:id">` with `req.params.id: string`.
+- `apps/api/src/routes/conductor.ts` and `apps/api/src/routes/chat.ts` are the LLM conductor agent and chat backends. They are not touched here. The conductor agent will eventually call `say`; that plumbing is not in this plan.
+- The chat feature keeps a browser identity in localStorage under `grugchug.chat.identity` (`{ userId, displayName }`), server-minted on first create or join. The server honours a caller-supplied id: `apps/api/src/routes/chat.ts` does `const userId = callerId(req) ?? newUserId();` where `callerId` reads the `CHAT_USER_HEADER` (`x-grugchug-user`) header, validated by `userIdSchema = z.string().min(1).max(64)`. The three client call sites pass `userId: identity?.userId ?? null`: `apps/web/src/features/chat/chat-rooms-view.tsx` (`onCreate`, `onJoin`) and `apps/web/src/features/chat/join-room-view.tsx` (`submit`).
+- `apps/web/test/setup.ts` registers happy-dom and runs Testing Library `cleanup` after each test, so components from one test never leak into the next.
 - `apps/api/src/db.ts` exports `getDb(): Promise<Db>`.
-- `packages/shared/src/index.ts` does `export * from "./schemas/<file>"` for each schema file, so new exports need no index change.
+- `packages/shared/src/index.ts` does `export * from "./schemas/<file>"` for each schema file (chat, conductor, gaze, session, train, typing, user), so new exports need no index change. `packages/shared/src/schemas/user.ts` is still `{ id, name, createdAt }` with no avatar.
 - drei 10.7.8 `Html` props include `center`, `distanceFactor`, `zIndexRange`, `pointerEvents`, and three.js `group` props like `position`.
 - zod 4: `z.enum([...]).options` is the readonly array of values; `schema.pick({ a: true })` exists.
 - `tw-animate-css` is imported in `apps/web/src/styles/index.css`, so `animate-in fade-in zoom-in-75 duration-200` classes work.
@@ -68,20 +72,26 @@ apps/web/src/features/speech/        new feature: plays speech, clears it when d
 
 apps/web/src/features/scene/
   constants.ts       + BUBBLE_OFFSET, BUBBLE_DISTANCE_FACTOR, BOB_AMPLITUDE, BOB_FREQUENCY, BOB_EASE
-  character.tsx      takes trainId; bobbing group; renders SpeechBubble
+  character.tsx      optional trainId; when given, bobbing group + SpeechBubble
   speech-bubble.tsx  new: drei Html bubble
-  train.tsx          passes trainId to Character
+  train.tsx          passes trainId to the conductor Character only
 
 apps/api/src/
   users-repo.ts      UserRepo interface, mongoUserRepo, memoryUserRepo
   routes/users.ts    createUserRoutes(repo) -> { get(id), put(id, req) }
   routes/users.test.ts
-  index.ts           + "/api/users/:id" route
+  index.ts           + "/api/users/:id" entry in the existing routes table
+
+apps/web/src/lib/
+  user-id.ts         getUserId(): the browser's id, minted once into localStorage
+  user-id.test.ts
+
+apps/web/src/features/chat/
+  chat-rooms-view.tsx    create/join send getUserId() instead of null
+  join-room-view.tsx     same
 
 apps/web/src/features/profile/       new feature: who this browser is
   index.ts
-  user-id.ts         getUserId() from localStorage
-  user-id.test.ts
   avatars.ts         AVATARS, avatarUrl, DEFAULT_PROFILE, profileOwner
   avatars.test.ts
   api.ts             fetchUser, saveUser
@@ -93,7 +103,7 @@ apps/web/src/features/profile/       new feature: who this browser is
 
 apps/web/src/routes/
   settings.tsx       renders AvatarPicker bound to useProfile
-  session.tsx        profile-driven local train, setOwner sync, useSpeechPlayer
+  session.tsx        profile-driven local train, setOwner sync, useSpeechPlayer; keeps Gaze
   session-dev-panel.tsx  + chatter button, z-20
 
 .llm/architecture.md    rows for speech, profile, users route, schema changes
@@ -109,18 +119,12 @@ docs/specs/2026-09-11-conductors-design.md   Deviations section
 
 - [ ] **Step 1: Create the worktree**
 
-Use the `superpowers:using-git-worktrees` skill. Branch name `conductors`, based on `train-world`:
-
-```bash
-git -C /home/ewzheng/Documents/CMU/grugchug worktree add -b conductors ../grugchug-conductors train-world
-cd ../grugchug-conductors
-bun install
-```
+Done with the `superpowers:using-git-worktrees` skill via the native `EnterWorktree` tool: worktree `.claude/worktrees/conductors`, branch `worktree-conductors`, base `main` at `34f2b5a`, `bun install` run. `.claude/worktrees/` is added to `.gitignore` in the first commit so the linked checkout never shows up as untracked in the main tree.
 
 - [ ] **Step 2: Confirm the baseline is green**
 
 Run: `bun run typecheck && bun run test && bun run lint`
-Expected: all pass. If not, stop and report; do not start Task 1 on a red baseline.
+Expected: all pass (one api test prints an intentional `MONGODB_URI is not set` stack trace while still passing). If anything fails, stop and report; do not start Task 1 on a red baseline.
 
 ---
 
@@ -903,7 +907,9 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 
 **Interfaces:**
 - Consumes: `useWorld` (`trains[id].speech`, `say`), `useSpeechPlayer` from `@/features/speech` (Task 3).
-- Produces: `Character({ trainId, url })`, `SpeechBubble({ text })`, constants `BUBBLE_OFFSET`, `BUBBLE_DISTANCE_FACTOR`, `BOB_AMPLITUDE`, `BOB_FREQUENCY`, `BOB_EASE`.
+- Produces: `Character({ url, position?, trainId? })` where a `trainId` makes the sprite the speaker for that train (bob + bubble); `SpeechBubble({ text })`; constants `BUBBLE_OFFSET`, `BUBBLE_DISTANCE_FACTOR`, `BOB_AMPLITUDE`, `BOB_FREQUENCY`, `BOB_EASE`.
+
+The conductor sprite on the locomotive is the speaker. The passenger sprite on the carriage stays static. To flip that later (make the picked avatar the talker), move `trainId={trainId}` from the conductor `<Character>` to the passenger one in `train.tsx`; nothing else changes.
 
 No unit tests: WebGL is unavailable in happy-dom. Verification is `bun run typecheck`, `bun run build`, and the manual check in Step 6.
 
@@ -912,11 +918,12 @@ No unit tests: WebGL is unavailable in happy-dom. Verification is `bun run typec
 Append to `apps/web/src/features/scene/constants.ts` directly after the `CHARACTER_SIZE` line:
 
 ```ts
-// Speech. The bubble's tail sits this far above the sprite's centre. Bubble
-// scale is BUBBLE_DISTANCE_FACTOR * 1 / (2 * tan(fov/2) * distance); at 14 that
-// is about 1x on lane 0 (22 m away) and 0.85x on lane 1.
+// Speech. The bubble's tail sits this far above the sprite's centre. drei
+// scales the bubble by BUBBLE_DISTANCE_FACTOR / (2 * tan(fov/2) * distance);
+// with the camera about 12.5 m from lane 0 that is roughly 1x there and a
+// little smaller on farther lanes. Tune by eye in the dev panel.
 export const BUBBLE_OFFSET: [number, number, number] = [0, CHARACTER_SIZE[1] / 2 + 0.15, 0];
-export const BUBBLE_DISTANCE_FACTOR = 14;
+export const BUBBLE_DISTANCE_FACTOR = 8;
 // The conductor bobs while its train has speech.
 export const BOB_AMPLITUDE = 0.12; // metres
 export const BOB_FREQUENCY = 9; // radians per second, about 1.4 bobs a second
@@ -972,13 +979,18 @@ import {
 } from "./constants";
 import { SpeechBubble } from "./speech-bubble";
 
-type CharacterProps = { trainId: string; url: string };
+type CharacterProps = {
+  url: string;
+  position?: [number, number, number];
+  // When set, this sprite speaks for that train: it bobs and shows a bubble
+  // while the train has speech.
+  trainId?: string;
+};
 
 // A hand-drawn 2D sprite that always faces the camera. Any PNG or SVG with
-// width/height attributes works; swap the URL, not the code. While its train
-// has speech the sprite bobs and carries a bubble.
-export function Character({ trainId, url }: CharacterProps) {
-  const speech = useWorld((s) => s.trains[trainId]?.speech);
+// width/height attributes works; swap the URL, not the code.
+export function Character({ url, position = CHARACTER_OFFSET, trainId }: CharacterProps) {
+  const speech = useWorld((s) => (trainId === undefined ? undefined : s.trains[trainId]?.speech));
   const texture = useTexture(url);
   // useTexture caches one Texture per URL, so this mutates a shared object on
   // every render. Safe only because the value is a constant; keep it that way.
@@ -992,6 +1004,7 @@ export function Character({ trainId, url }: CharacterProps) {
   const phase = useRef(0);
 
   useFrame((_, dt) => {
+    if (trainId === undefined) return;
     const step = Math.min(dt, 0.1);
     const speaking = useWorld.getState().trains[trainId]?.speech !== undefined;
     const target = speaking ? 1 : 0;
@@ -1008,7 +1021,7 @@ export function Character({ trainId, url }: CharacterProps) {
   });
 
   return (
-    <group position={CHARACTER_OFFSET}>
+    <group position={position}>
       <group ref={bob}>
         <Billboard>
           <mesh>
@@ -1023,21 +1036,23 @@ export function Character({ trainId, url }: CharacterProps) {
 }
 ```
 
-The `key={speech.id}` remounts the bubble on every new line so the pop-in animation replays even when the text repeats.
+The `key={speech.id}` remounts the bubble on every new line so the pop-in animation replays even when the text repeats. A sprite without `trainId` never subscribes to speech and its `useFrame` returns immediately, so passengers cost nothing extra.
 
-- [ ] **Step 4: Pass trainId from train.tsx**
+- [ ] **Step 4: Make the conductor the speaker in train.tsx**
 
-In `apps/web/src/features/scene/train.tsx`, change
+In `apps/web/src/features/scene/train.tsx`, change the conductor line
 
 ```tsx
-          <Character url={spriteUrl} />
+        <Character url={CONDUCTOR_SPRITE_URL} position={CONDUCTOR_OFFSET} />
 ```
 
 to
 
 ```tsx
-          <Character trainId={trainId} url={spriteUrl} />
+        <Character url={CONDUCTOR_SPRITE_URL} position={CONDUCTOR_OFFSET} trainId={trainId} />
 ```
+
+Leave the passenger `<Character url={spriteUrl} />` as it is.
 
 - [ ] **Step 5: Add the chatter button and mount the player**
 
@@ -1115,7 +1130,7 @@ and call `useSpeechPlayer();` as the first line of the `Session` body, before `c
 Run: `bun run typecheck && bun run lint && bun run build`
 Expected: pass.
 
-Manual: `bun run dev`, open `http://localhost:5173/session?dev`. Click "add friend train" twice, then "chatter". Expected: the local conductor gets a bubble and starts bobbing; 1.5 s later the first friend, then the second. Each bubble reads its line, sits over the sprite with a tail pointing down, and bobs with it. Bubbles disappear after roughly 2 to 3 s and the bob eases out. Bubbles on farther lanes are a little smaller. The dev panel stays above any bubble. Click "chatter" again and confirm the same conductor re-animates with a new line. Stop the dev server.
+Manual: `bun run dev`, open `http://localhost:5173/session?dev`. Click "add friend train" twice, then "chatter". Expected: the local train's conductor (the boxy one on the locomotive) gets a bubble and starts bobbing while the passenger on the carriage stays still; 1.5 s later the first friend's conductor, then the second. Each bubble reads its line, sits over the conductor with a tail pointing down, and bobs with it. Bubbles disappear after roughly 2 to 3 s and the bob eases out. Bubbles on farther lanes are a little smaller. The dev panel stays above any bubble. Click "chatter" again and confirm the same conductor re-animates with a new line. If bubbles look too large or small, adjust `BUBBLE_DISTANCE_FACTOR` and re-check. Stop the dev server.
 
 - [ ] **Step 7: Commit**
 
@@ -1126,9 +1141,9 @@ git add apps/web/src/features/scene/constants.ts apps/web/src/features/scene/spe
   apps/web/src/routes/session-dev-panel.tsx apps/web/src/routes/session.tsx
 git commit -m "Show a speech bubble and bob the conductor while its train has speech
 
-drei Html bubble inside a bobbing group, keyed by utterance so repeated
-lines re-animate. Dev panel gains a chatter button; the session page
-mounts the speech player.
+drei Html bubble inside a bobbing group on the conductor sprite, keyed
+by utterance so repeated lines re-animate. Dev panel gains a chatter
+button; the session page mounts the speech player.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
@@ -1313,34 +1328,29 @@ Expected: PASS, 5 tests.
 
 - [ ] **Step 6: Mount the route**
 
-Replace `apps/api/src/index.ts` with:
+`apps/api/src/index.ts` already has a routes table for health, conductor, and chat. Do not replace the file; add three things.
+
+Imports, keeping the existing ones and Biome's sorted order:
 
 ```ts
-// HTTP entrypoint. Framework-free on purpose: Bun.serve routes are enough for
-// now, and Express/Hono/Elysia can be mounted here later if the app outgrows it.
 import { getDb } from "./db";
-import { health } from "./routes/health";
 import { createUserRoutes } from "./routes/users";
 import { mongoUserRepo } from "./users-repo";
+```
 
-const port = Number(process.env.PORT ?? 3000);
+After `const port = ...`:
+
+```ts
 const users = createUserRoutes(mongoUserRepo(getDb));
+```
 
-const server = Bun.serve({
-  port,
-  routes: {
-    "/api/health": health,
+Inside `routes: { ... }`, directly after the `"/api/health": health,` line:
+
+```ts
     "/api/users/:id": {
       GET: (req) => users.get(req.params.id),
       PUT: (req) => users.put(req.params.id, req),
     },
-  },
-  fetch() {
-    return new Response("Not found", { status: 404 });
-  },
-});
-
-console.log(`api listening on http://localhost:${server.port}`);
 ```
 
 - [ ] **Step 7: Typecheck, lint, build, smoke**
@@ -1379,8 +1389,10 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 ### Task 6: Profile feature core
 
 **Files:**
-- Create: `apps/web/src/features/profile/user-id.ts`
-- Create: `apps/web/src/features/profile/user-id.test.ts`
+- Create: `apps/web/src/lib/user-id.ts`
+- Create: `apps/web/src/lib/user-id.test.ts`
+- Modify: `apps/web/src/features/chat/chat-rooms-view.tsx`
+- Modify: `apps/web/src/features/chat/join-room-view.tsx`
 - Create: `apps/web/src/features/profile/avatars.ts`
 - Create: `apps/web/src/features/profile/avatars.test.ts`
 - Create: `apps/web/src/features/profile/api.ts`
@@ -1391,11 +1403,11 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 
 **Interfaces:**
 - Consumes: `AvatarId`, `avatarIdSchema`, `User`, `UserProfile`, `userSchema`, `TrainOwner` from `@grugchug/shared`.
-- Produces: `USER_ID_KEY = "grugchug.userId"`, `getUserId(storage?: Storage): string`; `Avatar = { id: AvatarId; name: string; url: string }`, `AVATARS: Avatar[]`, `avatarUrl(id: AvatarId): string`, `DEFAULT_PROFILE: UserProfile = { name: "You", avatar: "poku" }`, `profileOwner(user: User | null): TrainOwner`; `fetchUser(id, fetchFn?): Promise<User | null>`, `saveUser(id, profile, fetchFn?): Promise<User>`; `ProfileStatus = "idle" | "loading" | "ready" | "error"`, `ProfileState = { user: User | null; status: ProfileStatus; load(): Promise<void>; setAvatar(avatar: AvatarId): Promise<void> }`, `ProfileDeps`, `createProfileStore(deps)`, `useProfile` (the app's store). `index.ts` exports `AVATARS`, `avatarUrl`, `profileOwner`, `useProfile`, type `ProfileState`. (`AvatarPicker` is added to the index in Task 7.)
+- Produces: in `@/lib/user-id`: `USER_ID_KEY = "grugchug.userId"`, `getUserId(storage?: Storage): string` (a `crypto.randomUUID()`, 36 chars, within chat's `userIdSchema` limit of 64). In `@/features/profile`: `Avatar = { id: AvatarId; name: string; url: string }`, `AVATARS: Avatar[]`, `avatarUrl(id: AvatarId): string`, `DEFAULT_PROFILE: UserProfile = { name: "You", avatar: "poku" }`, `profileOwner(user: User | null): TrainOwner`; `fetchUser(id, fetchFn?): Promise<User | null>`, `saveUser(id, profile, fetchFn?): Promise<User>`; `ProfileStatus = "idle" | "loading" | "ready" | "error"`, `ProfileState = { user: User | null; status: ProfileStatus; load(): Promise<void>; setAvatar(avatar: AvatarId): Promise<void> }`, `ProfileDeps`, `createProfileStore(deps)`, `useProfile` (the app's store). `index.ts` exports `AVATARS`, `avatarUrl`, `profileOwner`, `useProfile`, type `ProfileState`. (`AvatarPicker` is added to the index in Task 7.)
 
 - [ ] **Step 1: Write the failing user-id test**
 
-`apps/web/src/features/profile/user-id.test.ts`:
+`apps/web/src/lib/user-id.test.ts`:
 
 ```ts
 import { beforeEach, describe, expect, test } from "bun:test";
@@ -1425,16 +1437,20 @@ describe("getUserId", () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd apps/web && bun test src/features/profile/user-id.test.ts`
+Run: `cd apps/web && bun test src/lib/user-id.test.ts`
 Expected: FAIL, cannot find module `./user-id`.
 
 - [ ] **Step 3: Write user-id.ts**
+
+`apps/web/src/lib/user-id.ts`:
 
 ```ts
 export const USER_ID_KEY = "grugchug.userId";
 
 // The browser is the account. One random id per browser profile, minted on
 // first use and kept in localStorage. Clearing site data makes a new user.
+// Shared by profile (the user record) and chat (sent as the caller id on the
+// first create or join, which the server keeps) so one browser is one user.
 export function getUserId(storage: Storage = localStorage): string {
   const existing = storage.getItem(USER_ID_KEY);
   if (existing) return existing;
@@ -1446,8 +1462,34 @@ export function getUserId(storage: Storage = localStorage): string {
 
 - [ ] **Step 4: Run the user-id test**
 
-Run: `cd apps/web && bun test src/features/profile/user-id.test.ts`
+Run: `cd apps/web && bun test src/lib/user-id.test.ts`
 Expected: PASS, 3 tests.
+
+- [ ] **Step 4b: Make chat adopt the browser id**
+
+Chat mints its identity server-side on the first create or join unless the client sends an id. Send ours so both features agree on who this browser is.
+
+In `apps/web/src/features/chat/chat-rooms-view.tsx`, add the import
+
+```ts
+import { getUserId } from "@/lib/user-id";
+```
+
+and in both `onCreate` and `onJoin` change
+
+```ts
+        userId: identity?.userId ?? null,
+```
+
+to
+
+```ts
+        userId: identity?.userId ?? getUserId(),
+```
+
+In `apps/web/src/features/chat/join-room-view.tsx`, add the same import and make the same change inside `submit`.
+
+Browsers that already chatted keep their existing chat identity; only first-time chat users pick up the shared id. Run: `cd apps/web && bun test src/features/chat` and expect the existing chat tests to still pass.
 
 - [ ] **Step 5: Write the failing avatars test**
 
@@ -1731,9 +1773,9 @@ Expected: FAIL, cannot find module `./store`.
 ```ts
 import type { AvatarId, User, UserProfile } from "@grugchug/shared";
 import { create } from "zustand";
+import { getUserId } from "@/lib/user-id";
 import { fetchUser, saveUser } from "./api";
 import { DEFAULT_PROFILE } from "./avatars";
-import { getUserId } from "./user-id";
 
 export type ProfileStatus = "idle" | "loading" | "ready" | "error";
 
@@ -1797,28 +1839,30 @@ Expected: PASS, 6 tests.
 - [ ] **Step 17: Write index.ts**
 
 ```ts
-// Who this browser is: a random id kept in localStorage and a user record on
+// Who this browser is: the browser id from lib/user-id plus a user record on
 // the API holding the display name and the avatar that rides this user's
 // train. Owns the avatar catalog and the picker UI.
 export { AVATARS, avatarUrl, profileOwner } from "./avatars";
 export { type ProfileState, useProfile } from "./store";
 ```
 
-- [ ] **Step 18: Run all profile tests, typecheck, lint**
+- [ ] **Step 18: Run all profile and lib tests, typecheck, lint**
 
-Run: `cd apps/web && bun test src/features/profile && cd ../.. && bun run typecheck && bun run lint`
-Expected: pass, 17 tests.
+Run: `cd apps/web && bun test src/features/profile src/lib src/features/chat && cd ../.. && bun run typecheck && bun run lint`
+Expected: pass. New tests: 3 user-id, 4 avatars, 4 api, 6 store.
 
 - [ ] **Step 19: Commit**
 
 ```bash
 bun run fmt
-git add apps/web/src/features/profile
-git commit -m "Add profile feature: browser user id, avatar catalog, user store
+git add apps/web/src/lib/user-id.ts apps/web/src/lib/user-id.test.ts apps/web/src/features/profile \
+  apps/web/src/features/chat/chat-rooms-view.tsx apps/web/src/features/chat/join-room-view.tsx
+git commit -m "Add profile feature and a shared browser user id
 
-The browser mints an id into localStorage; the store loads the record
-from /api/users, creating the default on first visit, and saves avatar
-picks.
+lib/user-id mints one id per browser into localStorage; chat sends it on
+first create or join so both features agree on who this is. The profile
+store loads the record from /api/users, creating the default on first
+visit, and saves avatar picks.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
@@ -1953,7 +1997,7 @@ export function Settings() {
     <div className="flex flex-col gap-6 p-6">
       <h1 className="text-2xl font-semibold">Settings</h1>
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium">Your conductor</h2>
+        <h2 className="text-sm font-medium">Your character</h2>
         <AvatarPicker
           selected={user?.avatar}
           onSelect={(id) => void setAvatar(id)}
@@ -1977,7 +2021,7 @@ If Biome reports `lint/complexity/noVoid`, replace each `void x()` with a block 
 Run: `bun run typecheck && bun run lint && bun run test && bun run build`
 Expected: pass.
 
-Manual, with MongoDB up (`docker compose up -d`, `apps/api/.env` from `.env.example`): `bun run dev`, open `http://localhost:5173/settings`. Expected: three drawings with names; Poku highlighted on first visit. Click Conductor: it becomes highlighted. Reload: Conductor still highlighted. In devtools Application > Local Storage, `grugchug.userId` holds a UUID. Stop the API only and reload: the red "Couldn't reach the server" line appears and the drawings render unhighlighted. Restart the API.
+Manual, with MongoDB up (`docker compose up -d`, `apps/api/.env` from `.env.example`): `bun run dev`, open `http://localhost:5173/settings`. Expected: a "Your character" section with three drawings and names; Poku highlighted on first visit. Click Conductor: it becomes highlighted. Reload: Conductor still highlighted. In devtools Application > Local Storage, `grugchug.userId` holds a UUID. Stop the API only and reload: the red "Couldn't reach the server" line appears and the drawings render unhighlighted. Restart the API.
 
 - [ ] **Step 7: Commit**
 
@@ -2011,6 +2055,7 @@ No unit test: the route renders the WebGL canvas. `profileOwner` and the store a
 ```tsx
 import { useEffect } from "react";
 import { useSearchParams } from "react-router";
+import { Gaze } from "@/features/gaze";
 import { profileOwner, useProfile } from "@/features/profile";
 import { TrainWorld } from "@/features/scene";
 import { useSpeechPlayer } from "@/features/speech";
@@ -2060,19 +2105,22 @@ export function Session() {
     <div className="absolute inset-0">
       <TrainWorld />
       {dev ? <SessionDevPanel /> : null}
+      <div className="absolute bottom-4 left-4 rounded-lg bg-white/90">
+        <Gaze debug={dev} />
+      </div>
     </div>
   );
 }
 ```
 
-Apply the same `noVoid` fallback as Task 7 if Biome complains.
+The `Gaze` box is a teammate's and must stay exactly as it was. Apply the same `noVoid` fallback as Task 7 if Biome complains.
 
 - [ ] **Step 2: Typecheck, lint, test, build, manual check**
 
 Run: `bun run typecheck && bun run lint && bun run test && bun run build`
 Expected: pass.
 
-Manual, with MongoDB and both servers up: pick Conductor in `/settings`, open `/session`. Expected: the boxy conductor rides the locomotive. Go back to `/settings`, pick Bonbon, return to `/session`: the tall blob rides now, no reload needed. Stop the API, hard-reload `/session`: a train still appears, riding with Poku. Restart the API.
+Manual, with MongoDB and both servers up: pick Bonbon in `/settings`, open `/session`. Expected: the tall blob rides the carriage; the boxy conductor is still on the locomotive. Go back to `/settings`, pick Conductor, return to `/session`: the carriage now carries a second boxy figure, no reload needed. Stop the API, hard-reload `/session`: a train still appears, carrying Poku. Restart the API.
 
 - [ ] **Step 3: Commit**
 
@@ -2109,10 +2157,16 @@ In the `## apps/web` table, add these two rows directly after the `src/features/
 Change the `src/features/scene/` row to:
 
 ```markdown
-| `src/features/scene/` | react-three-fiber rendering of the world store: one scrolling lane per train, stations, scenery, sprites, speech bubbles and bobbing while a train has `speech`. Never writes the store |
+| `src/features/scene/` | react-three-fiber rendering of the world store: one scrolling lane per train, stations, scenery, a conductor and a passenger sprite per train, and a speech bubble plus bob on the conductor while its train has `speech`. Never writes the store |
 ```
 
-Change the data-flow paragraph to:
+Add after the `src/lib/` row:
+
+```markdown
+| `src/lib/user-id.ts` | The browser's user id, minted once into localStorage. Shared by `profile` and `chat` |
+```
+
+Change the data-flow paragraph (it currently ends with "or a multiplayer sync calling `applySnapshot`.") to:
 
 ```markdown
 Data flows one way: `gaze` and `typing` produce samples, `session` collects
@@ -2123,7 +2177,7 @@ a multiplayer sync calling `applySnapshot`, or `speech` clearing a finished
 line. `profile` feeds the local train's owner into `world`.
 ```
 
-In the `## apps/api` table, add after the `src/routes/` row:
+In the `## apps/api` table, add after the `src/db.ts` row (before the conductor rows):
 
 ```markdown
 | `src/routes/users.ts` | `GET`/`PUT /api/users/:id`: read and upsert a browser-identified user's name and avatar |
@@ -2137,11 +2191,12 @@ In the `## packages/shared` table, change the `user` and `train` rows to:
 | `train` | `TrainPhase`, `TrainState` (id, owner, phase, efficiency, lane, optional `speech`), `Speech`, `WorldSnapshot` |
 ```
 
-In `## Deferred`, replace the "Conductor sprite" bullet with:
+In `## Deferred`, replace the "Conductor sprite: ... is committed but unplaced ..." bullet with:
 
 ```markdown
-- Voice clips: `say(trainId, text, audioUrl)` plays whatever URL it is given. Producing clips (text to speech, storage) belongs to the agent pipeline.
-- Speech across clients: `until` is not on the wire; each client's speech player clears lines locally. A snapshot that re-delivers a friend's finished line puts its bubble back until the friend's clear propagates. Multiplayer spec.
+- Voice clips: `say(trainId, text, audioUrl)` plays whatever URL it is given. Producing clips (text to speech, storage) belongs to the conductor agent pipeline, which also does not yet call `say`.
+- Speech across clients: each client's speech player clears lines locally. A snapshot that re-delivers a friend's finished line puts its bubble back until the friend's clear propagates. Multiplayer spec.
+- One identity: `lib/user-id` is used by profile always and by chat only on a first create or join. A browser that chatted before this landed keeps its older chat id alongside the new profile id until real auth replaces both.
 ```
 
 - [ ] **Step 2: Update AGENTS.md**
@@ -2177,6 +2232,17 @@ Append to `docs/specs/2026-09-11-conductors-design.md`:
   tests then need no `BunRequest`.
 - `setAvatar` failure sets `status: "error"` but keeps the last loaded user,
   so the session still rides with the last known avatar.
+- The conductor is not the picked avatar. While this spec was being written,
+  teammates put a fixed `conductor.png` on every locomotive and moved the
+  owner's sprite onto the carriage (commit `8c3a1e6`). The conductor is the
+  agent's face and is the sprite that talks and bobs; the picked avatar is
+  the passenger. Flipping that is one prop move in `train.tsx`.
+- The browser user id lives in `apps/web/src/lib/user-id.ts`, not in
+  `features/profile`, because chat needs the same id and features do not
+  import each other. Chat sends it as the caller id on a first create or
+  join; the server keeps a caller-supplied id.
+- Settings labels the picker "Your character", since the pick is the
+  passenger, not the conductor.
 ```
 
 - [ ] **Step 4: Final verification**
@@ -2202,4 +2268,4 @@ Claude-Session: https://claude.ai/code/session_01N9ri2hm9heyG387RwYuyVU"
 
 - [ ] **Step 6: Hand back**
 
-Use `superpowers:finishing-a-development-branch`. The target is `train-world`, not `main`. Merge `conductors` into `train-world` from the main working tree with explicit paths only; never `git add -A` there.
+Use `superpowers:finishing-a-development-branch`. The target is `main`, which teammates integrate into by pull request. Push `conductors` and open a PR against `main`, or merge locally from the main working tree with explicit paths only; never `git add -A` there.
