@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { ChatOverlay, readIdentity } from "@/features/chat";
+import { ConductorOverlay } from "@/features/conductor";
 import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/efficiency";
 import { Gaze } from "@/features/gaze";
 import { profileOwner, useProfile } from "@/features/profile";
@@ -75,6 +76,7 @@ export function Session() {
         <Gaze debug={dev} onFacing={reportAttention} />
       </div>
       <ChatOverlay />
+      <ConductorOverlay />
     </div>
   );
 }

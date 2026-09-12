@@ -1,6 +1,6 @@
-import { Billboard, useTexture } from "@react-three/drei";
+import { Billboard, useCursor, useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { type Group, SRGBColorSpace, Vector3 } from "three";
 import { useWorld } from "@/features/world";
 import {
@@ -19,12 +19,17 @@ type CharacterProps = {
   // When set, this sprite speaks for that train: it bobs and shows a bubble
   // while the train has speech.
   trainId?: string;
+  // When set, the sprite is clickable and shows a pointer cursor on hover —
+  // the conductor uses this to open its panel. Unset for every other sprite.
+  onClick?: () => void;
 };
 
 // A hand-drawn 2D sprite that always faces the camera. Any PNG or SVG with
 // width/height attributes works; swap the URL, not the code.
-export function Character({ url, position = CHARACTER_OFFSET, trainId }: CharacterProps) {
+export function Character({ url, position = CHARACTER_OFFSET, trainId, onClick }: CharacterProps) {
   const speech = useWorld((s) => (trainId === undefined ? undefined : s.trains[trainId]?.speech));
+  const [hovered, setHovered] = useState(false);
+  useCursor(hovered);
   const texture = useTexture(url);
   // useTexture caches one Texture per URL, so this mutates a shared object on
   // every render. Safe only because the value is a constant; keep it that way.
@@ -63,7 +68,12 @@ export function Character({ url, position = CHARACTER_OFFSET, trainId }: Charact
     <group position={position}>
       <group ref={bob}>
         <Billboard>
-          <mesh>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: this is a react-three-fiber <mesh>, a 3D object in the Canvas, not an HTML element */}
+          <mesh
+            onClick={onClick}
+            onPointerOver={onClick ? () => setHovered(true) : undefined}
+            onPointerOut={onClick ? () => setHovered(false) : undefined}
+          >
             <planeGeometry args={CHARACTER_SIZE} />
             <meshBasicMaterial map={texture} transparent alphaTest={0.5} />
           </mesh>

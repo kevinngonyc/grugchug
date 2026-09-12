@@ -2,6 +2,7 @@ import { Clone, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { type RefObject, Suspense, useCallback, useEffect, useRef } from "react";
 import type { Group, Object3D } from "three";
+import { useConductorUi } from "@/features/conductor";
 import { targetSpeed, useWorld } from "@/features/world";
 import { Character } from "./character";
 import {
@@ -113,7 +114,12 @@ export function Train({ trainId, motion }: TrainProps) {
         </group>
         <Smoke motion={source} />
         <Suspense fallback={null}>
-          <Character url={CONDUCTOR_SPRITE_URL} position={CONDUCTOR_OFFSET} trainId={trainId} />
+          <Character
+            url={CONDUCTOR_SPRITE_URL}
+            position={CONDUCTOR_OFFSET}
+            trainId={trainId}
+            onClick={isLocal ? () => useConductorUi.getState().toggle() : undefined}
+          />
         </Suspense>
         {spriteUrl ? (
           <Suspense fallback={null}>

@@ -3,6 +3,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { targetSpeed, useWorld } from "@/features/world";
+import { ConductorCameraRig } from "./conductor-camera";
 import {
   CAMERA_FOV,
   CAMERA_LOOK_AT,
@@ -27,6 +28,7 @@ export function TrainWorld() {
       dpr={[1, 1.5]}
     >
       <VoiceListener />
+      <ConductorCameraRig />
       <color attach="background" args={[SKY_COLOR]} />
       <fog attach="fog" args={[SKY_COLOR, 30, 70]} />
       <ambientLight intensity={0.8} />
