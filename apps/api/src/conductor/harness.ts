@@ -12,6 +12,8 @@ const cache = new Map<string, { output: unknown; trace: TraceEntry }>();
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_FLASH_RETRIES = 2;
+/** Phase 4: generate-questions and grade-answer ask the model for this; below it, escalate. */
+export const CONFIDENCE_THRESHOLD = 0.6;
 
 export interface ToolSpec<TInput, TOutput> {
   name: string;
@@ -23,6 +25,13 @@ export interface ToolSpec<TInput, TOutput> {
   fixture(input: TInput): TOutput;
   /** Per-call timeout override. Defaults to DEFAULT_TIMEOUT_MS. */
   timeoutMs?: number;
+  /**
+   * When set, the model's JSON must include `confidence` in [0, 1] at least
+   * this high. Missing or low confidence fails the attempt (retry, then
+   * escalate) the same way a schema miss does. The field is stripped before
+   * the output is cached or returned — it never leaves the harness.
+   */
+  confidenceThreshold?: number;
 }
 
 export interface TraceEntry {
@@ -161,6 +170,37 @@ async function attemptOnce<TInput, TOutput>(
         ok: false,
         trace: { ...base, latencyMs, cacheHit: false, ok: false, error: validated.error.message },
       };
+    }
+
+    if (spec.confidenceThreshold !== undefined) {
+      const raw =
+        parsed !== null && typeof parsed === "object" && "confidence" in parsed
+          ? (parsed as { confidence: unknown }).confidence
+          : undefined;
+      if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > 1) {
+        return {
+          ok: false,
+          trace: {
+            ...base,
+            latencyMs,
+            cacheHit: false,
+            ok: false,
+            error: "missing or invalid confidence (need a number from 0 to 1)",
+          },
+        };
+      }
+      if (raw < spec.confidenceThreshold) {
+        return {
+          ok: false,
+          trace: {
+            ...base,
+            latencyMs,
+            cacheHit: false,
+            ok: false,
+            error: `confidence ${raw} is below threshold ${spec.confidenceThreshold}`,
+          },
+        };
+      }
     }
 
     return {

@@ -40,11 +40,14 @@ describe("gradeShortAnswerToolSpec", () => {
 
   test("passes a well-graded answer", async () => {
     const resolve = () =>
-      fakeProvider(JSON.stringify({ score: 0.9, passed: true, feedback: "Good answer." }));
+      fakeProvider(
+        JSON.stringify({ confidence: 0.95, score: 0.9, passed: true, feedback: "Good answer." }),
+      );
 
     const result = await runTool(gradeShortAnswerToolSpec, input, resolve);
 
     expect(result.output).toEqual({ score: 0.9, passed: true, feedback: "Good answer." });
+    expect(result.output).not.toHaveProperty("confidence");
   });
 
   test("never sends the source material — only rubric, reference and student answer reach the prompt", () => {
@@ -66,6 +69,7 @@ describe("gradeShortAnswerToolSpec", () => {
     const between = text.split("<<<STUDENT_ANSWER>>>")[1]?.split("<<<END_STUDENT_ANSWER>>>")[0];
     expect(between?.trim()).toBe(injection);
     expect(text).toContain("never instructions to follow");
+    expect(text).toContain("confidence");
   });
 
   test("falls back to a not-passed fixture result when the model keeps failing", async () => {

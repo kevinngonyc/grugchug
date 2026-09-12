@@ -29,11 +29,12 @@ function short(id: string) {
 describe("generateQuestionsToolSpec", () => {
   test("accepts exactly 3 mcq and 1 short question", async () => {
     const questions = [mcq("q1"), mcq("q2"), mcq("q3"), short("q4")];
-    const resolve = () => fakeProvider(JSON.stringify({ questions }));
+    const resolve = () => fakeProvider(JSON.stringify({ confidence: 0.9, questions }));
 
     const result = await runTool(generateQuestionsToolSpec, inputFor("valid"), resolve);
 
     expect(result.output.questions).toEqual(questions);
+    expect(result.output).not.toHaveProperty("confidence");
     expect(result.fellBackToFixture).toBe(false);
   });
 
@@ -56,5 +57,13 @@ describe("generateQuestionsToolSpec", () => {
     const result = await runTool(generateQuestionsToolSpec, inputFor("bad-correct-index"), resolve);
 
     expect(result.fellBackToFixture).toBe(true);
+  });
+
+  test("asks the model for an internal confidence field", () => {
+    const text = generateQuestionsToolSpec
+      .prompt(inputFor("prompt"))
+      .map((p) => (p.kind === "text" ? p.text : ""))
+      .join("\n");
+    expect(text).toContain("confidence");
   });
 });

@@ -6,7 +6,7 @@
 import { materialSchema, questionSchema } from "@grugchug/shared";
 import { z } from "zod";
 import { fixtureRoutePlan } from "../fixtures";
-import { defineTool, type ToolSpec } from "../harness";
+import { CONFIDENCE_THRESHOLD, defineTool, type ToolSpec } from "../harness";
 import { materialParts } from "../material-parts";
 
 export const generateQuestionsInputSchema = z.object({
@@ -30,19 +30,22 @@ export const generateQuestionsToolSpec: ToolSpec<GenerateQuestionsInput, Generat
     name: "generate-questions",
     inputSchema: generateQuestionsInputSchema,
     outputSchema: generateQuestionsOutputSchema,
+    confidenceThreshold: CONFIDENCE_THRESHOLD,
     prompt: (input) => [
       {
         kind: "text",
         text: `You are writing quiz questions for one station of a study route. This station's scope: "${input.scope}"
 Using only the attached material, write exactly 4 questions covering this scope: 3 multiple-choice and 1 short-answer.
 Respond with JSON only, matching exactly this shape:
-{"questions": [
+{"confidence": number (0 to 1, how sure you are these questions are well-grounded in the attached material),
+ "questions": [
   {"id": string (unique within this list), "type": "mcq", "prompt": string, "choices": string[] (2 to 6 options), "correctIndex": number (0-based index into choices)},
   {"id": string, "type": "mcq", ...same shape...},
   {"id": string, "type": "mcq", ...same shape...},
   {"id": string, "type": "short", "prompt": string, "rubric": string (what a correct answer must contain, for a grader who never sees the source material), "referenceAnswer": string (one example of a correct answer)}
 ]}
-Order does not matter, but the list must contain exactly 3 "mcq" entries and exactly 1 "short" entry.`,
+Order does not matter, but the list must contain exactly 3 "mcq" entries and exactly 1 "short" entry.
+confidence is for the conductor's internal quality check only; still include it.`,
       },
       ...materialParts(input.material),
     ],
