@@ -1,0 +1,35 @@
+# systemd unit for the whole app: one Bun process serves the API and the
+# built web app on localhost:3000. Cloudflare Tunnel (cloudflared) publishes
+# that port at the public hostname; nothing else listens on the box.
+#
+# Installed by deploy/install.sh to /etc/systemd/system/grugchug.service.
+# Configuration lives in /opt/grugchug/apps/api/.env (see .env.example);
+# the start script loads it. SQLITE_PATH must point under /var/lib/grugchug,
+# the only writable path this unit allows.
+
+[Unit]
+Description=grugchug study buddy (API + web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=grugchug
+Group=grugchug
+WorkingDirectory=/opt/grugchug/apps/api
+ExecStart=/usr/local/bin/bun run start
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+# /var/lib/grugchug, created and owned for the service user: the SQLite file.
+StateDirectory=grugchug
+# The checkout is read-only to the service; only the state directory is writable.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/grugchug
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
