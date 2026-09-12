@@ -18,10 +18,6 @@ export function createMotion(): LaneMotion {
   return { scroll: 0, speed: 0, stopTarget: null };
 }
 
-// Advances one lane by dt seconds. `cruise` is the speed the train would run
-// at if it were running; `target` is what the store asks for now (0 when
-// stopped). While a stopTarget is set the train keeps cruising and a
-// v = sqrt(2 a d) braking curve brings it to rest exactly there.
 export function stepMotion(m: LaneMotion, cruise: number, target: number, dt: number): void {
   const wanted = m.stopTarget === null ? target : cruise;
   let v = m.speed;

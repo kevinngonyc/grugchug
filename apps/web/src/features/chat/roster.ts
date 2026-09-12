@@ -10,17 +10,32 @@ import { create } from "zustand";
 
 interface RosterState {
   members: ChatPresenceMember[];
+  /**
+   * Which roster entry is us: our own socket's id, as the server named it on
+   * `ready`. Not read from stored identity — a second tab writing its own
+   * identity to the same localStorage key would make this tab mistake a
+   * friend for itself, draw a train for itself, and wear the other tab's name.
+   */
+  selfId: string | null;
   setMembers: (members: ChatPresenceMember[]) => void;
+  setSelfId: (selfId: string | null) => void;
   clear: () => void;
 }
 
 export const useRosterStore = create<RosterState>()((set) => ({
   members: [],
+  selfId: null,
   setMembers: (members) => set({ members }),
-  clear: () => set({ members: [] }),
+  setSelfId: (selfId) => set({ selfId }),
+  clear: () => set({ members: [], selfId: null }),
 }));
 
 /** Everyone connected, in the order they arrived. Includes you. */
 export function useRoster(): ChatPresenceMember[] {
   return useRosterStore((s) => s.members);
+}
+
+/** Our own connection id, or null while there is no socket. */
+export function useRosterSelfId(): string | null {
+  return useRosterStore((s) => s.selfId);
 }

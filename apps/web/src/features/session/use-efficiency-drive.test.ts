@@ -2,7 +2,14 @@
 // score, the score becomes the train's efficiency, and efficiency becomes the
 // speed the scene eases toward.
 import { beforeEach, expect, test } from "bun:test";
-import { ATTENTION_HALF_LIFE_MS, EFFICIENCY_SCORE_MAX, useEfficiency } from "@/features/efficiency";
+import {
+  ATTENTION_HALF_LIFE_MS,
+  ATTENTION_SOURCE,
+  ATTENTION_STALE_HALF_LIFE_MS,
+  ATTENTION_WEIGHT,
+  EFFICIENCY_SCORE_MAX,
+  useEfficiency,
+} from "@/features/efficiency";
 import { MAX_SPEED, MIN_SPEED, targetSpeed, useWorld } from "@/features/world";
 import { resetFocusClock } from "./focus-time";
 import { driveEfficiencyOnce } from "./use-efficiency-drive";
@@ -14,6 +21,17 @@ function localTrain() {
   const train = useWorld.getState().trains[LOCAL];
   if (!train) throw new Error("the local train went missing");
   return train;
+}
+
+// Seeds full attention directly, bypassing foldAttention's neutral opening —
+// for tests where "eyes on the screen" is the setup, not the thing under test.
+function seedFullAttention(at: number): void {
+  useEfficiency.getState().report(ATTENTION_SOURCE, 1, {
+    label: "Eyes on screen",
+    weight: ATTENTION_WEIGHT,
+    halfLifeMs: ATTENTION_STALE_HALF_LIFE_MS,
+    at,
+  });
 }
 
 beforeEach(() => {
@@ -32,7 +50,7 @@ beforeEach(() => {
 });
 
 test("eyes on the screen run the train at full speed", () => {
-  useEfficiency.getState().reportAttention(true, NOW);
+  seedFullAttention(NOW);
   driveEfficiencyOnce(NOW);
 
   expect(localTrain().efficiency).toBeCloseTo(1, 6);
@@ -41,7 +59,7 @@ test("eyes on the screen run the train at full speed", () => {
 
 test("looking away slows the train without stranding it", () => {
   const efficiency = useEfficiency.getState();
-  efficiency.reportAttention(true, NOW);
+  seedFullAttention(NOW);
   // Two half-lives of looking elsewhere.
   efficiency.reportAttention(false, NOW + ATTENTION_HALF_LIFE_MS);
   efficiency.reportAttention(false, NOW + 2 * ATTENTION_HALF_LIFE_MS);
@@ -55,7 +73,7 @@ test("looking away slows the train without stranding it", () => {
 
 test("a bad quiz slows the train even while you are staring at it", () => {
   const efficiency = useEfficiency.getState();
-  efficiency.reportAttention(true, NOW);
+  seedFullAttention(NOW);
   driveEfficiencyOnce(NOW);
   const before = targetSpeed(localTrain());
 
@@ -71,7 +89,7 @@ test("a bad quiz slows the train even while you are staring at it", () => {
 
 test("the train picks back up as an old quiz fades, with nobody reporting", () => {
   const efficiency = useEfficiency.getState();
-  efficiency.reportAttention(true, NOW);
+  seedFullAttention(NOW);
   efficiency.report("quiz", 0, { label: "Quiz", weight: 1, halfLifeMs: 60_000, at: NOW });
   driveEfficiencyOnce(NOW);
   expect(localTrain().efficiency).toBeCloseTo(0.5, 6);
@@ -82,7 +100,7 @@ test("the train picks back up as an old quiz fades, with nobody reporting", () =
 });
 
 test("a stopped train stays stopped however good the score is", () => {
-  useEfficiency.getState().reportAttention(true, NOW);
+  seedFullAttention(NOW);
   useWorld.getState().setPhase(LOCAL, "stopped");
   driveEfficiencyOnce(NOW);
 
@@ -91,7 +109,7 @@ test("a stopped train stays stopped however good the score is", () => {
 });
 
 test("the local train banks focused time at the rate of its score", () => {
-  useEfficiency.getState().reportAttention(true, NOW);
+  seedFullAttention(NOW);
   driveEfficiencyOnce(NOW);
   driveEfficiencyOnce(NOW + 500);
   driveEfficiencyOnce(NOW + 1000);

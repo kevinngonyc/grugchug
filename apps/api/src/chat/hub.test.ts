@@ -22,9 +22,10 @@ test("rejects malformed frames without throwing", () => {
 });
 
 test("encodes server events as JSON the client can parse", () => {
-  expect(JSON.parse(encode({ type: "ready", roomId: "r1" }))).toEqual({
+  expect(JSON.parse(encode({ type: "ready", roomId: "r1", connectionId: "c1" }))).toEqual({
     type: "ready",
     roomId: "r1",
+    connectionId: "c1",
   });
 });
 
@@ -53,25 +54,40 @@ test("decodes a rename and a focus report", () => {
   expect(decodeClientEvent(JSON.stringify({ type: "focus", efficiency: 2 })).ok).toBe(false);
 });
 
-test("the roster is one entry per person, in arrival order", () => {
+test("the roster is one entry per open socket, in arrival order", () => {
   const ada = newSocketData({ roomId: "r1", userId: "u1", displayName: "Ada" });
   const bob = newSocketData({ roomId: "r1", userId: "u2", displayName: "Bob" });
   ada.efficiency = 0.7;
   ada.focusedSeconds = 42;
   expect(toPresence([ada, bob])).toEqual([
-    { userId: "u1", displayName: "Ada", efficiency: 0.7, focusedSeconds: 42 },
-    { userId: "u2", displayName: "Bob", efficiency: 0, focusedSeconds: 0 },
+    {
+      connectionId: ada.connectionId,
+      userId: "u1",
+      displayName: "Ada",
+      efficiency: 0.7,
+      focusedSeconds: 42,
+    },
+    {
+      connectionId: bob.connectionId,
+      userId: "u2",
+      displayName: "Bob",
+      efficiency: 0,
+      focusedSeconds: 0,
+    },
   ]);
 });
 
-test("a second tab is the same rider, reporting the newer score", () => {
+test("two tabs of one browser are two riders, not one", () => {
+  // They share a stored userId, so folding the roster by userId would leave
+  // one entry — and each tab would see a room containing only itself.
   const first = newSocketData({ roomId: "r1", userId: "u1", displayName: "Ada" });
   const second = newSocketData({ roomId: "r1", userId: "u1", displayName: "Ada" });
   first.efficiency = 0.2;
   second.efficiency = 0.9;
-  expect(toPresence([first, second])).toEqual([
-    { userId: "u1", displayName: "Ada", efficiency: 0.9, focusedSeconds: 0 },
-  ]);
+  expect(first.connectionId).not.toBe(second.connectionId);
+  const presence = toPresence([first, second]);
+  expect(presence).toHaveLength(2);
+  expect(presence.map((p) => p.efficiency)).toEqual([0.2, 0.9]);
 });
 
 test("decodes a journey report", () => {
@@ -94,6 +110,7 @@ test("the roster carries a rider's avatar and journey once sent, and omits them 
 
   const [adaPresence, bobPresence] = toPresence([ada, bob]);
   expect(adaPresence).toEqual({
+    connectionId: ada.connectionId,
     userId: "u1",
     displayName: "Ada",
     efficiency: 0,

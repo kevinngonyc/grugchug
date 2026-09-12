@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { useWorld } from "@/features/world";
 import { LANE_SPACING, STATION_DISTANCE, VISIBLE_HALF_WIDTH } from "./constants";
 import { getMotion, type LaneMotion } from "./motion";
@@ -61,7 +61,8 @@ export function Lane({ trainId, motion }: LaneProps) {
     }
   });
 
-  const stationXs = stations.map((s) => s.worldX);
+  // Stable while the stations are: Scenery reads it every frame.
+  const stationXs = useMemo(() => stations.map((s) => s.worldX), [stations]);
 
   return (
     <group position-z={lane * LANE_SPACING}>

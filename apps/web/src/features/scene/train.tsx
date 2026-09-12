@@ -97,9 +97,10 @@ export function Train({ trainId, motion }: TrainProps) {
   useFrame((_, dt) => {
     const lane = motion.current;
     const step = Math.min(dt, 0.1);
+    const world = useWorld.getState();
 
     if (!isLocal) {
-      const train = useWorld.getState().trains[trainId];
+      const train = world.trains[trainId];
       if (train) {
         // Level with the lane and matching its speed: true when this train
         // first appears, and again whenever a regroup asks for it.

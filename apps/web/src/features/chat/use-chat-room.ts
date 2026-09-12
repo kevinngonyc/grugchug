@@ -77,6 +77,8 @@ export function useChatRoom(roomId: string | null, userId: string | null): ChatR
 
       switch (parsed.data.type) {
         case "ready":
+          // How this client picks itself out of every roster that follows.
+          useRosterStore.getState().setSelfId(parsed.data.connectionId);
           break;
         case "message":
           dispatch({

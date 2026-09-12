@@ -1,4 +1,4 @@
-import { PerformanceMonitor, useGLTF } from "@react-three/drei";
+import { PerformanceMonitor, Stats, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -22,7 +22,14 @@ import { VoiceListener } from "./voice-listener";
 
 for (const url of ALL_MODEL_URLS) useGLTF.preload(url);
 
-export function TrainWorld() {
+type TrainWorldProps = {
+  /** `/session?dev`: show the frame-rate panel over the scene. */
+  debug?: boolean;
+};
+
+export function TrainWorld({ debug = false }: TrainWorldProps) {
+  // Pixels are the one cost that scales with the window rather than with the
+  // scene, so they are what gets given up first when frames start dropping.
   const [dpr, setDpr] = useState(DPR_MAX);
 
   return (
@@ -32,7 +39,18 @@ export function TrainWorld() {
       dpr={dpr}
       gl={{ powerPreference: "high-performance" }}
     >
-      <PerformanceMonitor onDecline={() => setDpr(DPR_MIN)} onIncline={() => setDpr(DPR_MAX)} />
+      {/* `flipflops` is the important part: a machine sitting right on the
+          threshold would otherwise trade pixel ratios back and forth forever,
+          and every swap reallocates the drawing buffer — a stutter of its own,
+          caused by the thing meant to prevent stutters. After a few swaps it
+          settles on the low setting and stops asking. */}
+      <PerformanceMonitor
+        flipflops={3}
+        onDecline={() => setDpr(DPR_MIN)}
+        onIncline={() => setDpr(DPR_MAX)}
+        onFallback={() => setDpr(DPR_MIN)}
+      />
+      {debug ? <Stats /> : null}
       <VoiceListener />
       <ConductorCameraRig />
       <color attach="background" args={[SKY_COLOR]} />
@@ -78,7 +96,8 @@ function TravellingWorld() {
   }, [phase]);
 
   useFrame((_, dt) => {
-    const train = leaderId ? useWorld.getState().trains[leaderId] : undefined;
+    const world = useWorld.getState();
+    const train = leaderId ? world.trains[leaderId] : undefined;
     if (!train) return;
     stepMotion(
       motion.current,

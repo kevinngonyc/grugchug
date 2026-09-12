@@ -1,6 +1,26 @@
-import { beforeEach, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { EFFICIENCY_SCORE_MAX, EFFICIENCY_SCORE_MIN, EFFICIENCY_SCORE_NEUTRAL } from "@grugchug/shared";
 import { ATTENTION_HALF_LIFE_MS } from "./attention";
-import { ATTENTION_SOURCE, efficiencyFraction, useEfficiency } from "./store";
+import {
+  ATTENTION_SOURCE,
+  ATTENTION_STALE_HALF_LIFE_MS,
+  ATTENTION_WEIGHT,
+  efficiencyFraction,
+  useEfficiency,
+} from "./store";
+
+// Seeds full attention directly, bypassing foldAttention's neutral opening —
+// for tests where "eyes on the screen" is the setup, not the thing under test.
+function seedFullAttention(at: number): void {
+  useEfficiency
+    .getState()
+    .report(ATTENTION_SOURCE, 1, {
+      label: "Eyes on screen",
+      weight: ATTENTION_WEIGHT,
+      halfLifeMs: ATTENTION_STALE_HALF_LIFE_MS,
+      at,
+    });
+}
 
 const NOW = 1_757_000_000_000;
 
@@ -18,22 +38,23 @@ test("a source reports and the score follows", () => {
   expect(efficiencyFraction()).toBeCloseTo(0.9, 6);
 });
 
-test("attention folds observations into one running signal", () => {
+test("attention opens at neutral, then folds toward what it sees", () => {
   const efficiency = useEfficiency.getState();
   efficiency.reportAttention(true, NOW);
-  efficiency.reportAttention(false, NOW + ATTENTION_HALF_LIFE_MS);
+  expect(useEfficiency.getState().signals[ATTENTION_SOURCE]?.value).toBeCloseTo(0.5, 6);
 
+  // One half-life of looking closes half the gap between neutral and full.
+  efficiency.reportAttention(true, NOW + ATTENTION_HALF_LIFE_MS);
   const attention = useEfficiency.getState().signals[ATTENTION_SOURCE];
-  expect(attention?.value).toBeCloseTo(0.5, 6);
-  expect(useEfficiency.getState().score).toBeCloseTo(50, 6);
+  expect(attention?.value).toBeCloseTo(0.75, 6);
+  expect(useEfficiency.getState().score).toBeCloseTo(75, 6);
 });
 
 test("a quiz moves the score without taking it over", () => {
-  const efficiency = useEfficiency.getState();
-  efficiency.reportAttention(true, NOW);
+  seedFullAttention(NOW);
   expect(useEfficiency.getState().score).toBeCloseTo(100, 6);
 
-  efficiency.report("quiz", 0, { label: "Quiz", weight: 0.5, at: NOW });
+  useEfficiency.getState().report("quiz", 0, { label: "Quiz", weight: 0.5, at: NOW });
   expect(useEfficiency.getState().score).toBeCloseTo(66.67, 1);
 });
 
@@ -49,9 +70,8 @@ test("re-reporting keeps the weight and half-life it was given", () => {
 });
 
 test("ticking lets an old signal fade without anyone reporting", () => {
-  const efficiency = useEfficiency.getState();
-  efficiency.reportAttention(true, NOW);
-  efficiency.report("quiz", 0, { label: "Quiz", weight: 1, halfLifeMs: 60_000, at: NOW });
+  seedFullAttention(NOW);
+  useEfficiency.getState().report("quiz", 0, { label: "Quiz", weight: 1, halfLifeMs: 60_000, at: NOW });
   expect(useEfficiency.getState().score).toBeCloseTo(50, 6);
 
   useEfficiency.getState().tick(NOW + 7 * 60_000);
@@ -59,11 +79,64 @@ test("ticking lets an old signal fade without anyone reporting", () => {
 });
 
 test("dropping a source removes it from the blend", () => {
-  const efficiency = useEfficiency.getState();
-  efficiency.reportAttention(true, NOW);
-  efficiency.report("manual", 0, { label: "Manual override", weight: 8, at: NOW });
+  seedFullAttention(NOW);
+  useEfficiency.getState().report("manual", 0, { label: "Manual override", weight: 8, at: NOW });
   expect(useEfficiency.getState().score).toBeLessThan(20);
 
   useEfficiency.getState().drop("manual", NOW);
   expect(useEfficiency.getState().score).toBeCloseTo(100, 6);
+});
+
+describe("neutralize", () => {
+  test("puts the score at neutral, not the floor", () => {
+    const store = useEfficiency.getState();
+    store.reset();
+    store.report("quiz", 1, { weight: 1 });
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_MAX);
+
+    useEfficiency.getState().neutralize();
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_NEUTRAL);
+  });
+
+  test("someone who was slacking is leveled up, not punished further", () => {
+    const store = useEfficiency.getState();
+    store.reset();
+    store.report("quiz", 0, { weight: 1 });
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_MIN);
+
+    useEfficiency.getState().neutralize();
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_NEUTRAL);
+  });
+
+  test("a fresh session is already neutral, and stays there", () => {
+    useEfficiency.getState().reset();
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_NEUTRAL);
+    useEfficiency.getState().neutralize();
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_NEUTRAL);
+  });
+
+  test("the next reading moves from neutral instead of undoing it", () => {
+    const at = Date.now();
+    useEfficiency.getState().reset();
+    seedFullAttention(at);
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_MAX);
+
+    useEfficiency.getState().neutralize(at);
+    expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_NEUTRAL);
+
+    // Eyes back on the screen a second later. If neutralize() had simply
+    // forgotten the signal, attention would still open at neutral on its own
+    // — so this is really checking that it moves *from* neutral rather than
+    // reopening fresh, which only shows up as it keeps climbing afterward.
+    useEfficiency.getState().reportAttention(true, at + 1_000);
+    const soonAfter = useEfficiency.getState().score;
+    expect(soonAfter).toBeGreaterThan(EFFICIENCY_SCORE_NEUTRAL);
+    expect(soonAfter).toBeLessThan(EFFICIENCY_SCORE_NEUTRAL + 1);
+
+    // A minute of it closes about half the remaining gap to full marks, by
+    // attention's own half-life. Earned, not handed over.
+    useEfficiency.getState().reportAttention(true, at + 61_000);
+    expect(useEfficiency.getState().score).toBeGreaterThan(70);
+    expect(useEfficiency.getState().score).toBeLessThan(80);
+  });
 });

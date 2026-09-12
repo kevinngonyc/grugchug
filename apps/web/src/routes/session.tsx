@@ -66,13 +66,16 @@ export function Session() {
 
   const [params] = useSearchParams();
   const dev = params.has("dev");
+  // See FocusHud: a switch for telling the scene's cost apart from the
+  // tracker's when the session feels slow.
+  const gaze = !params.has("nogaze");
 
   return (
     <div className="absolute inset-0">
-      <TrainWorld />
+      <TrainWorld debug={dev} />
       {dev ? <SessionDevPanel /> : null}
       <FocusBoard onSelectCharacter={() => useAvatarPickerUi.getState().setOpen(true)} />
-      <FocusHud debug={dev} />
+      <FocusHud debug={dev} gaze={gaze} />
       <ChatOverlay />
       <ConductorOverlay />
       <AvatarDialog />

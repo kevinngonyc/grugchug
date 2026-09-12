@@ -67,13 +67,20 @@ describe("wire protocol", () => {
   });
 
   test("a presence event carries the whole roster with each rider's score", () => {
-    const members = [{ userId: "u1", displayName: "Kevin", efficiency: 0.75 }];
+    const members = [{ connectionId: "c1", userId: "u1", displayName: "Kevin", efficiency: 0.75 }];
     expect(serverChatEventSchema.safeParse({ type: "presence", members }).success).toBe(true);
     expect(serverChatEventSchema.safeParse({ type: "presence", members: [] }).success).toBe(true);
   });
 
+  test("a rider without a connection is not a presence event", () => {
+    // Riders are connections. A userId cannot stand in for one: two tabs of a
+    // browser share it, and the roster has to tell them apart.
+    const members = [{ userId: "u1", displayName: "Kevin", efficiency: 0.5 }];
+    expect(serverChatEventSchema.safeParse({ type: "presence", members }).success).toBe(false);
+  });
+
   test("a score outside 0..1 is not a presence event", () => {
-    const members = [{ userId: "u1", displayName: "Kevin", efficiency: 1.5 }];
+    const members = [{ connectionId: "c1", userId: "u1", displayName: "Kevin", efficiency: 1.5 }];
     expect(serverChatEventSchema.safeParse({ type: "presence", members }).success).toBe(false);
   });
 
@@ -87,6 +94,7 @@ describe("wire protocol", () => {
 describe("presence with a journey", () => {
   test("a member may carry an avatar and where they are", () => {
     const member = {
+      connectionId: "c1",
       userId: "u1",
       displayName: "Ada",
       efficiency: 0.5,
@@ -97,7 +105,7 @@ describe("presence with a journey", () => {
   });
 
   test("a member without them still parses", () => {
-    const member = { userId: "u1", displayName: "Ada", efficiency: 0.5 };
+    const member = { connectionId: "c1", userId: "u1", displayName: "Ada", efficiency: 0.5 };
     expect(chatPresenceMemberSchema.parse(member)).toEqual(member);
   });
 

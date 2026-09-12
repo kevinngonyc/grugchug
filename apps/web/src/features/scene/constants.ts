@@ -43,6 +43,7 @@ export const WHEEL_RADIUS = 0.3;
 
 // Motion, metres per second squared
 export const ACCEL = 1.5;
+
 export const BRAKE_DECEL = 2;
 
 // Stopping: a station appears this far ahead when a stop is requested.

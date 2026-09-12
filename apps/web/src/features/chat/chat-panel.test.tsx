@@ -4,23 +4,25 @@ import { render, screen } from "@testing-library/react";
 import { journeyLabel, RosterList, ridersLabel } from "./chat-panel";
 
 function member(displayName: string, userId = displayName): ChatPresenceMember {
-  return { userId, displayName, efficiency: 0.5 };
+  return { connectionId: `conn-${userId}`, userId, displayName, efficiency: 0.5 };
 }
 
 describe("ridersLabel", () => {
   test("says how to fix an empty room", () => {
-    expect(ridersLabel([member("You", "me")], "me")).toContain("invite link");
+    expect(ridersLabel([member("You", "me")], "conn-me")).toContain("invite link");
   });
 
   test("names one rider", () => {
-    expect(ridersLabel([member("You", "me"), member("Ada")], "me")).toBe("Ada is riding with you.");
+    expect(ridersLabel([member("You", "me"), member("Ada")], "conn-me")).toBe(
+      "Ada is riding with you.",
+    );
   });
 
   test("joins two with an and, and a crowd with commas", () => {
-    expect(ridersLabel([member("Ada"), member("Bo")], "me")).toBe(
+    expect(ridersLabel([member("Ada"), member("Bo")], "conn-me")).toBe(
       "Ada and Bo are riding with you.",
     );
-    expect(ridersLabel([member("Ada"), member("Bo"), member("Cy")], "me")).toBe(
+    expect(ridersLabel([member("Ada"), member("Bo"), member("Cy")], "conn-me")).toBe(
       "Ada, Bo and Cy are riding with you.",
     );
   });
@@ -55,9 +57,9 @@ describe("RosterList", () => {
     const { container } = render(
       <RosterList
         members={[
-          { userId: "u1", displayName: "Ada", efficiency: 0.5, avatar: "cat", journey },
-          { userId: "c", displayName: "Bob", efficiency: 0.5 },
-          { userId: "a", displayName: "Cy", efficiency: 0.5 },
+          { connectionId: "conn-1", userId: "u1", displayName: "Ada", efficiency: 0.5, avatar: "cat", journey },
+          { connectionId: "conn-2", userId: "c", displayName: "Bob", efficiency: 0.5 },
+          { connectionId: "conn-3", userId: "a", displayName: "Cy", efficiency: 0.5 },
         ]}
       />,
     );

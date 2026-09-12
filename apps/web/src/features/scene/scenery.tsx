@@ -14,6 +14,10 @@ import {
 import { MODELS } from "./models";
 import { type LaneMotion, wrapWorldX } from "./motion";
 
+// Hoisted: useGLTF takes the array identity into account, and a fresh one on
+// every render is a fresh cache lookup for every lane, every render.
+const SCENERY_URLS = [...MODELS.scenery];
+
 type SceneryProps = { motion: RefObject<LaneMotion>; stationXs: readonly number[] };
 
 type Slot = {
@@ -42,7 +46,7 @@ function makeSlots(): Slot[] {
 // platform.
 export function Scenery({ motion, stationXs }: SceneryProps) {
   // useGLTF accepts an array and returns one GLTF per URL, in order.
-  const scenes = useGLTF([...MODELS.scenery]).map((gltf) => gltf.scene);
+  const scenes = useGLTF(SCENERY_URLS).map((gltf) => gltf.scene);
   const slots = useRef<Slot[] | null>(null);
   if (slots.current === null) slots.current = makeSlots();
   const pool = slots.current;

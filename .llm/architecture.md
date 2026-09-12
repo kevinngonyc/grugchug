@@ -31,7 +31,7 @@ through `src/features/<feature>/index.ts`.
 | Path | Responsibility |
 |---|---|
 | `src/app.tsx`, `src/routes/` | Session-first app with no navbar: `/` and legacy `/settings` redirect to `/session`; history remains at `/dashboard`; invite landing page and old chat redirects |
-| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Webcam preview and diagnostics are dev-only |
+| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Webcam preview and diagnostics are dev-only, and `?nogaze` turns tracking off entirely as a measuring stick for its main-thread cost |
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
 | `src/features/session/` | Drives local efficiency, banks today's focused time (`focus-time.ts`) and pushes it with focus and journey status into chat, and maps the chat roster to companion trains that stop at their own stations |
@@ -126,10 +126,23 @@ own train. Each companion train has its own speed and moves along its track
 relative to the local train; its wheels and smoke use that speed. Whole
 multi-axle bogies stay fixed, while individual wheel meshes spin.
 
-Relative gaps close gradually when speeds converge. New roster participants
-call `regroup()`, resetting speed and lining companions up again. A companion
-outside the camera frame is represented by `DriftMarker`; `framing.ts`
-computes the visible width from the current camera and viewport.
+Relative gaps close gradually when speeds converge.
+
+A rider is one open socket, not one `userId`: a userId
+lives in `localStorage` and every tab of a browser shares it, so keying riders
+by it turns two windows into one entry — no arrival, no train, an empty-looking
+room. The server names each socket on `ready` and the client picks itself out
+of the roster by that name, never by stored identity, which a second tab can
+overwrite. Anyone turning up on the roster restarts the
+sitting — a stranger, someone back after closing the tab, a reconnecting
+socket, all one event from inside the room. `useEfficiency.neutralize()` puts
+the focus score at neutral for everyone present, to be earned up or down from
+there evenly, and speed follows the score on its own. `regroup()` lines the companion trains up
+level to match; the scene reads the `regroups` count in its frame loop rather
+than subscribing, so no regroup can land on a subscription that was not
+mounted yet. A companion outside the camera frame is represented by
+`DriftMarker`; `framing.ts` computes the visible width from the current camera
+and viewport.
 
 The closer camera views the trains from the negative-z side; lanes extend in
 positive z. Camera, spacing, drift, bounce, and audio tuning values live in

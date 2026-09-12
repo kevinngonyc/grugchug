@@ -14,7 +14,7 @@ import { ChatComposer } from "./chat-composer";
 import { InvitePanel } from "./invite-panel";
 import { MessageList } from "./message-list";
 import { NameField } from "./name-field";
-import { useRoster } from "./roster";
+import { useRoster, useRosterSelfId } from "./roster";
 import { useChatRoom } from "./use-chat-room";
 import { useMyRoom } from "./use-my-room";
 
@@ -29,7 +29,9 @@ const statusLabel = {
  * the roster from the server includes you, and you are not news to yourself.
  */
 export function ridersLabel(members: readonly ChatPresenceMember[], selfId: string | null): string {
-  const others = members.filter((member) => member.userId !== selfId).map((m) => m.displayName);
+  const others = members
+    .filter((member) => member.connectionId !== selfId)
+    .map((m) => m.displayName);
   if (others.length === 0) return "Riding alone — send someone the invite link.";
   if (others.length === 1) return `${others[0]} is riding with you.`;
   if (others.length === 2) return `${others[0]} and ${others[1]} are riding with you.`;
@@ -85,6 +87,9 @@ export function ChatPanel() {
     identity?.userId ?? null,
   );
   const roster = useRoster();
+  // Which entry is us on the wire; the stored userId cannot say, since every
+  // tab of this browser shares it.
+  const selfId = useRosterSelfId();
 
   const onRename = useCallback(
     (displayName: string) => {
@@ -104,7 +109,7 @@ export function ChatPanel() {
           <InvitePanel inviteCode={room?.inviteCode ?? null} />
         </div>
         <p className="truncate text-[0.6875rem] text-muted-foreground">
-          {room ? ridersLabel(roster, identity?.userId ?? null) : statusLabel[status]}
+          {room ? ridersLabel(roster, selfId) : statusLabel[status]}
         </p>
         <RosterList members={roster} />
       </header>

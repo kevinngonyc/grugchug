@@ -28,4 +28,4 @@ export { JoinRoomView } from "./join-view";
 export type { JourneyStatus } from "./journey-link";
 export { reportJourney } from "./journey-link";
 export type { ChatLog } from "./message-log";
-export { useRoster } from "./roster";
+export { useRoster, useRosterSelfId } from "./roster";

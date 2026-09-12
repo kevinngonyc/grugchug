@@ -62,9 +62,22 @@ afterEach(() => {
 
 test("the first socket in a room sees only itself", () => {
   open(ada);
-  expect(ada.sent[0]).toEqual({ type: "ready", roomId: "r1" });
+  expect(ada.sent[0]).toEqual({
+    type: "ready",
+    roomId: "r1",
+    connectionId: ada.ws.data.connectionId,
+  });
   expect(ada.topics.has("chat:room:r1")).toBe(true);
   expect(roster(ada)).toEqual(["Ada"]);
+});
+
+test("two sockets on one userId are two riders on the roster", () => {
+  // The case every local test of this app hits: two tabs, one stored userId.
+  const twin = fake("u1", "Ada");
+  open(ada);
+  open(twin);
+  expect(roster(ada)).toEqual(["Ada", "Ada"]);
+  close(twin);
 });
 
 test("someone arriving is announced to everyone, themselves included", () => {

@@ -6,7 +6,7 @@
 import type { EfficiencySignal } from "@grugchug/shared";
 import { EFFICIENCY_SCORE_MAX } from "@grugchug/shared";
 import { create } from "zustand";
-import { ATTENTION_HALF_LIFE_MS, foldAttention } from "./attention";
+import { ATTENTION_HALF_LIFE_MS, foldAttention, NEUTRAL_ATTENTION } from "./attention";
 import { clamp01, scoreOrNeutral } from "./score";
 
 /** The source id the webcam reports under. */
@@ -45,6 +45,8 @@ export type EfficiencyState = {
   tick: (at?: number) => void;
   /** Forget everything — a new sitting starts from neutral. */
   reset: () => void;
+  /** Put the score at neutral, for everyone to earn up or down from evenly. */
+  neutralize: (at?: number) => void;
 };
 
 function recompute(
@@ -99,6 +101,25 @@ export const useEfficiency = create<EfficiencyState>()((set, get) => ({
   tick: (at = Date.now()) => set((s) => ({ score: recompute(s.signals, at) })),
 
   reset: () => set({ signals: {}, score: scoreOrNeutral([], Date.now()) }),
+
+  // Everyone starts the next stretch even, at neutral rather than wherever
+  // they happened to be before someone else arrived — nobody is a hundred
+  // metres up the line on credit, and nobody who was slacking is punished
+  // for it either. From here it moves up or down like any other reading.
+  //
+  // Every existing signal is pinned to neutral rather than forgotten: with no
+  // signals at all `recompute` already reads neutral, so the pinning only
+  // matters for a source still actively reporting (attention), which would
+  // otherwise blend its very next reading against the value it had before the
+  // regroup instead of starting level with everyone else.
+  neutralize: (at = Date.now()) =>
+    set((s) => {
+      const signals: Record<string, EfficiencySignal> = {};
+      for (const [source, signal] of Object.entries(s.signals)) {
+        signals[source] = { ...signal, value: NEUTRAL_ATTENTION, updatedAt: at };
+      }
+      return { signals, score: recompute(signals, at) };
+    }),
 }));
 
 function positiveWeight(weight: number | undefined): number {

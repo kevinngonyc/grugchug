@@ -75,6 +75,14 @@ export const chatMessageSchema = z.object({
 // the focused time they have banked today, as their own client counts it, so
 // every screen's leaderboard agrees. Optional so an older client still parses.
 export const chatPresenceMemberSchema = z.object({
+  /**
+   * One open socket, which is what a rider actually is. Not the userId: a
+   * userId is stored per browser, so two tabs of the same app share one, and
+   * keying riders by it collapses them into a single entry — nobody arrives,
+   * no train appears, and the room looks empty from both tabs. A connection is
+   * the thing that came and will go.
+   */
+  connectionId: z.string().min(1).max(64),
   userId: userIdSchema,
   displayName: displayNameSchema,
   efficiency: z.number().min(0).max(1),
@@ -163,7 +171,14 @@ export const clientChatEventSchema = z.discriminatedUnion("type", [
 ]);
 
 export const serverChatEventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("ready"), roomId: z.string() }),
+  // connectionId is how a client picks itself out of the roster. Reading it
+  // back off stored identity cannot work: another tab writing its own identity
+  // to the same key would make this tab mistake a friend for itself.
+  z.object({
+    type: z.literal("ready"),
+    roomId: z.string(),
+    connectionId: z.string().min(1).max(64),
+  }),
   z.object({
     type: z.literal("message"),
     message: chatMessageSchema,
