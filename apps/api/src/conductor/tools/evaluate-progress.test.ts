@@ -18,42 +18,52 @@ const goodResults = [
 ];
 
 describe("evaluateProgressToolSpec", () => {
-  test("passes when the model judges the results strong enough", async () => {
+  test("returns the model's feedback", async () => {
     const resolve = () =>
-      fakeProvider(JSON.stringify({ confidence: 0.9, passed: true, feedback: "Solid grasp." }));
+      fakeProvider(JSON.stringify({ confidence: 0.9, feedback: "Solid grasp." }));
 
     const result = await runTool(
       evaluateProgressToolSpec,
-      { scope: "unique-strong-case", results: goodResults },
+      { scope: "unique-strong-case", results: goodResults, passed: true, meanScore: 0.95 },
       resolve,
     );
 
-    expect(result.output).toEqual({ passed: true, feedback: "Solid grasp." });
+    expect(result.output).toEqual({ feedback: "Solid grasp." });
     expect(result.output).not.toHaveProperty("confidence");
   });
 
-  test("never sends the source material — only scope and per-question summaries reach the prompt", () => {
+  test("tells the model the score and the decided verdict, never the source material", () => {
     const parts = evaluateProgressToolSpec.prompt({
       scope: "Photosynthesis",
       results: goodResults,
+      passed: false,
+      meanScore: 0.55,
     });
     expect(parts.every((p) => p.kind === "text")).toBe(true);
     const text = parts.map((p) => (p.kind === "text" ? p.text : "")).join("\n");
     expect(text).toContain("Photosynthesis");
     expect(text).toContain("Q1");
-    expect(text).toContain("Q2");
+    expect(text).toContain("overall score is 55% and the pass mark is 70%");
+    expect(text).toContain("not passed yet");
+    expect(evaluateProgressToolSpec.system).toContain("never contradict it");
   });
 
-  test("falls back to not-passed when every attempt fails", async () => {
+  test("falls back to feedback that matches the verdict when every attempt fails", async () => {
     const resolve = () => fakeProvider("not json");
 
-    const result = await runTool(
+    const failed = await runTool(
       evaluateProgressToolSpec,
-      { scope: "unique-fallback-case", results: goodResults },
+      { scope: "unique-fallback-case", results: goodResults, passed: false, meanScore: 0.4 },
       resolve,
     );
+    expect(failed.fellBackToFixture).toBe(true);
+    expect(failed.output.feedback).toContain("Not quite yet");
 
-    expect(result.fellBackToFixture).toBe(true);
-    expect(result.output.passed).toBe(false);
+    const passed = await runTool(
+      evaluateProgressToolSpec,
+      { scope: "unique-fallback-pass-case", results: goodResults, passed: true, meanScore: 0.9 },
+      resolve,
+    );
+    expect(passed.output.feedback).toContain("You passed");
   });
 });

@@ -3,11 +3,15 @@
 // content-hash cache, a timeout, and a trace log. Every failure mode
 // degrades to a caller-supplied fixture instead of throwing — a request
 // should never die just because both providers are down or unconfigured.
+// Callers that must not pass a fixture off as real content check
+// fallbackReason() and refuse instead (see routes/conductor.ts createPlan).
 import type { z } from "zod";
 import { getProvider, type LLMProvider, type ProviderPart, type Tier } from "./provider";
 
 // Same material + same params should not re-hit the LLM. Keyed on tool name
-// plus the validated input, JSON-stringified. Process-lifetime only.
+// plus the validated input, JSON-stringified. Process-lifetime only, and
+// bounded: past this many entries the oldest is dropped.
+const MAX_CACHE_ENTRIES = 200;
 const cache = new Map<string, { output: unknown; trace: TraceEntry }>();
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -19,6 +23,14 @@ export interface ToolSpec<TInput, TOutput> {
   name: string;
   inputSchema: z.ZodType<TInput>;
   outputSchema: z.ZodType<TOutput>;
+  /**
+   * Who the model is for this tool and the standing rules it keeps. Sent as
+   * the vendor's system instruction, apart from the per-call data prompt()
+   * builds.
+   */
+  system: string;
+  /** Sampling temperature. Omit for the vendor default. */
+  temperature?: number;
   /** Builds the model request from validated input. May include a document part for PDFs. */
   prompt(input: TInput): ProviderPart[];
   /** Used only when every provider attempt (flash retries + one pro escalation) has failed. */
@@ -32,6 +44,11 @@ export interface ToolSpec<TInput, TOutput> {
    * the output is cached or returned — it never leaves the harness.
    */
   confidenceThreshold?: number;
+  /**
+   * false for a tool whose answer should vary call to call — set-timer's
+   * message would otherwise repeat word for word. Default: cached.
+   */
+  cache?: boolean;
 }
 
 export interface TraceEntry {
@@ -67,6 +84,22 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// Every failed attempt and every fixture fallback is printed, so a
+// misconfigured provider is visible in the API's output rather than only as
+// odd content in the app. Quiet under `bun test`, where failures are the
+// point of half the tests.
+function warn(message: string): void {
+  if (process.env.NODE_ENV !== "test") console.warn(`[conductor] ${message}`);
+}
+
+function remember(key: string, value: { output: unknown; trace: TraceEntry }): void {
+  cache.set(key, value);
+  if (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+}
+
 class TimeoutError extends Error {}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -97,6 +130,15 @@ function feedbackPart(error: string): ProviderPart {
     kind: "text",
     text: `Your previous response failed validation with this error: ${error}\nRespond again with corrected JSON only, matching the requested shape exactly.`,
   };
+}
+
+/**
+ * Why a run fell back to its fixture — the first attempt's error, which is
+ * the most specific ("GROQ_FLASH_MODEL is not set") — or null if it did not.
+ */
+export function fallbackReason(result: ToolRunResult<unknown>): string | null {
+  if (!result.fellBackToFixture) return null;
+  return result.trace.find((entry) => !entry.ok)?.error ?? "every attempt failed";
 }
 
 type Attempt<TOutput> =
@@ -145,7 +187,10 @@ async function attemptOnce<TInput, TOutput>(
   };
 
   try {
-    const result = await withTimeout(provider.generate(parts), timeoutMs);
+    const result = await withTimeout(
+      provider.generate(parts, { system: spec.system, temperature: spec.temperature }),
+      timeoutMs,
+    );
     const latencyMs = Math.round(performance.now() - started);
 
     let parsed: unknown;
@@ -224,6 +269,7 @@ function fallback<TInput, TOutput>(
   tier: Tier,
   reason: string,
 ): ToolRunResult<TOutput> {
+  warn(`${spec.name}: every attempt failed, serving its fixture (${reason})`);
   trace.push({
     tool: spec.name,
     provider: "fixture",
@@ -239,6 +285,12 @@ function fallback<TInput, TOutput>(
   return { output: spec.fixture(input), trace, fellBackToFixture: true };
 }
 
+function warnFailed(entry: TraceEntry): void {
+  warn(
+    `${entry.tool}: ${entry.tier} attempt ${entry.attempt} failed (${entry.provider}/${entry.model}): ${entry.error}`,
+  );
+}
+
 // The testable core: everything above minus how a provider is obtained.
 // defineTool()'s run() calls this with the real getProvider; tests pass a
 // fake resolver instead so nothing hits the network.
@@ -248,8 +300,9 @@ export async function runTool<TInput, TOutput>(
   resolveProvider: ProviderResolver,
 ): Promise<ToolRunResult<TOutput>> {
   const input = spec.inputSchema.parse(rawInput);
+  const useCache = spec.cache !== false;
   const cacheKey = hashKey(spec.name, input);
-  const cached = cache.get(cacheKey);
+  const cached = useCache ? cache.get(cacheKey) : undefined;
   if (cached) {
     return {
       output: cached.output as TOutput,
@@ -279,9 +332,10 @@ export async function runTool<TInput, TOutput>(
     );
     trace.push(result.trace);
     if (result.ok) {
-      cache.set(cacheKey, { output: result.output, trace: result.trace });
+      if (useCache) remember(cacheKey, { output: result.output, trace: result.trace });
       return { output: result.output, trace, fellBackToFixture: false };
     }
+    warnFailed(result.trace);
     lastError = result.trace.error;
   }
 
@@ -298,9 +352,10 @@ export async function runTool<TInput, TOutput>(
   );
   trace.push(escalation.trace);
   if (escalation.ok) {
-    cache.set(cacheKey, { output: escalation.output, trace: escalation.trace });
+    if (useCache) remember(cacheKey, { output: escalation.output, trace: escalation.trace });
     return { output: escalation.output, trace, fellBackToFixture: false };
   }
+  warnFailed(escalation.trace);
 
   return fallback(spec, input, trace, "pro", escalation.trace.error ?? "escalation failed");
 }

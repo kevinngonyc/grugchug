@@ -1,7 +1,7 @@
-// Bottom-right controls, below the study-plan panel: break or quit. Break is
-// only offered once the train is actually stopped at a station, matching
-// the flow the user described; quit is always available. Both proxy to
-// study-session.ts, which owns the real state.
+// Bottom-right controls, below the study-plan panel: break or quit. A break
+// can be taken mid-stretch (the study timer pauses and resumes after it) or
+// at a station; quit is always available. Both proxy to study-session.ts,
+// which owns the real state.
 import { useStudySession } from "./study-session";
 import { secondaryButtonClass } from "./ui";
 
@@ -10,7 +10,7 @@ export function SessionControls() {
   const busy = useStudySession((s) => s.busy);
   const plan = useStudySession((s) => s.plan);
 
-  const canBreak = plan !== null && mode === "at-station";
+  const canBreak = plan !== null && (mode === "counting" || mode === "at-station");
 
   return (
     <div className="flex shrink-0 gap-2 rounded-2xl border border-border/40 bg-background/90 p-3 shadow-xl">

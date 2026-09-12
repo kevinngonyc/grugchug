@@ -29,6 +29,11 @@ export const SCHEMA: readonly string[] = [
      plan TEXT NOT NULL,
      created_at TEXT NOT NULL
    )`,
+  `CREATE TABLE IF NOT EXISTS plan_materials (
+     plan_id TEXT PRIMARY KEY,
+     materials TEXT NOT NULL,
+     created_at TEXT NOT NULL
+   )`,
   `CREATE TABLE IF NOT EXISTS chat_rooms (
      id TEXT PRIMARY KEY,
      name TEXT NOT NULL,

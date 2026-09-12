@@ -1,8 +1,11 @@
-// Tool: decides whether a learner can move on from a station, given the
-// scope and every question's outcome — never the source material, same
-// minimal-context principle as grade-answer. This is a holistic judgment call
-// (partial credit, which questions mattered more), not a fixed "all correct"
-// or percentage rule. Flash tier; the harness decides whether to escalate.
+// Tool: writes the learner's feedback for a station they just finished. The
+// verdict is not the model's call — the route decides `passed` from the mean
+// score against PASS_THRESHOLD, the same number the web shows as "overall" —
+// so the words can never contradict the score on screen. Given the scope and
+// every question's outcome, never the source material, same minimal-context
+// principle as grade-answer. Flash tier; the harness decides whether to
+// escalate.
+import { PASS_THRESHOLD } from "@grugchug/shared";
 import { z } from "zod";
 import { CONFIDENCE_THRESHOLD, defineTool, type ToolSpec } from "../harness";
 
@@ -16,11 +19,12 @@ const progressResultInputSchema = z.object({
 export const evaluateProgressInputSchema = z.object({
   scope: z.string().min(1),
   results: z.array(progressResultInputSchema).min(1),
+  passed: z.boolean(),
+  meanScore: z.number().min(0).max(1),
 });
 export type EvaluateProgressInput = z.infer<typeof evaluateProgressInputSchema>;
 
 export const evaluateProgressOutputSchema = z.object({
-  passed: z.boolean(),
   feedback: z.string(),
 });
 export type EvaluateProgressOutput = z.infer<typeof evaluateProgressOutputSchema>;
@@ -34,29 +38,38 @@ function formatResults(results: EvaluateProgressInput["results"]): string {
     .join("\n");
 }
 
+function percent(fraction: number): number {
+  return Math.round(fraction * 100);
+}
+
 export const evaluateProgressToolSpec: ToolSpec<EvaluateProgressInput, EvaluateProgressOutput> = {
   name: "evaluate-progress",
   inputSchema: evaluateProgressInputSchema,
   outputSchema: evaluateProgressOutputSchema,
   confidenceThreshold: CONFIDENCE_THRESHOLD,
+  system:
+    "You are the professor for this course, writing brief feedback to a learner who just finished a station's quiz. You are specific about what they got right and what to review, and encouraging without being vague. The pass or fail verdict is already decided by their score; you explain it and never contradict it. Respond with JSON only.",
+  temperature: 0.3,
   prompt: (input) => [
     {
       kind: "text",
-      text: `You are deciding whether a learner has understood this station well enough to move on. This station's scope: "${input.scope}"
+      text: `Write feedback for a learner who just finished this station's quiz. This station's scope: "${input.scope}"
 
 Here is every question they answered at this station and how it was graded:
 ${formatResults(input.results)}
 
-Use your judgment, not a fixed rule: weigh how central each question was to the scope, whether the mistakes suggest a real gap versus a minor slip, and the overall pattern — not just an average.
+Their overall score is ${percent(input.meanScore)}% and the pass mark is ${percent(PASS_THRESHOLD)}%, so they have ${input.passed ? "passed and move on to the next station" : "not passed yet and will review this station before trying again"}.
 
-Respond with JSON only, matching exactly this shape: {"confidence": number between 0 and 1 (how sure you are of this call), "passed": boolean (can they move on?), "feedback": string (one or two sentences, addressed to the learner, explaining the decision)}.
+In one or two sentences addressed to the learner, say what they did well and what to review ${input.passed ? "before the next station builds on it" : "before they retry"}. Name specific topics from the questions rather than giving generic advice.
+
+Respond with JSON only, matching exactly this shape: {"confidence": number between 0 and 1 (how sure you are this feedback is accurate), "feedback": string}.
 confidence is for the conductor's internal quality check only; still include it.`,
     },
   ],
-  fixture: () => ({
-    passed: false,
-    feedback:
-      "Automatic review is unavailable right now — keep studying this station and try again shortly.",
+  fixture: (input) => ({
+    feedback: input.passed
+      ? "You passed this station. Detailed feedback is unavailable right now."
+      : "Not quite yet — review this station and try the questions again. Detailed feedback is unavailable right now.",
   }),
 };
 

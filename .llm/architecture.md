@@ -203,12 +203,13 @@ Paths below are relative to `apps/api/`.
 | `src/chat/store.ts` | SQLite `chat_rooms`, `chat_members`, and `chat_messages` tables |
 | `src/chat/hub.ts` | Per-room socket topics, message/focus/rename/journey events, and in-memory presence |
 | `src/chat/rate-limit.ts`, `src/chat/errors.ts` | Per-connection throttling and request failure reporting |
-| `src/routes/conductor.ts` | Plan creation/retrieval, answer grading, and questions |
-| `src/conductor/tools/` | Plan stations, generate questions, grade answers, and answer study questions |
-| `src/conductor/harness.ts` | Validated tool execution, content-hash cache, timeouts, retries, confidence checks, traces, and fixtures |
-| `src/conductor/provider/` | Gemini/Groq adapters and central vendor/model selection |
-| `src/conductor/pdf.ts`, `src/conductor/material-parts.ts` | Material conversion; local PDF text extraction for Groq |
-| `src/conductor/store.ts` | SQLite `route_plans` persistence with schema validation on read |
+| `src/routes/conductor.ts` | Plan creation/retrieval, answer grading, station verdicts (mean score ≥ `PASS_THRESHOLD`), TA questions, and timers |
+| `src/conductor/tools/` | One persona each, sent as a system instruction: curriculum designer (plan-route), professor (generate-questions, evaluate-progress feedback), grader (grade-answer), teaching assistant (ask-conductor), study coach (set-timer) |
+| `src/conductor/harness.ts` | Validated tool execution with system prompt and temperature, bounded content-hash cache, timeouts, retries, confidence checks, traces, failure logging, fixtures, and `fallbackReason` |
+| `src/conductor/provider/` | Gemini/Groq adapters and central vendor/model selection; `describeLlmConfig` is logged at startup |
+| `src/conductor/pdf.ts`, `src/conductor/material-parts.ts` | Material conversion; local PDF text extraction for Groq, cached by content hash |
+| `src/conductor/store.ts` | SQLite `route_plans`, plus `plan_materials` (the uploaded files, kept for the TA and never sent to the browser) |
+| `scripts/check-llm.ts` | `bun run --filter @grugchug/api check:llm`: one real call per tier to confirm the provider configuration |
 | `src/study/store.ts` | SQLite `study_sessions` and `station_results` tables: start, record a station verdict, end, and list a user's history |
 | `src/routes/study-sessions.ts` | Validated study-history endpoints backed by `src/study/store.ts` |
 
@@ -219,24 +220,45 @@ Paths below are relative to `apps/api/`.
 | `POST /api/conductor/plans` | Turn text/PDF study material into a persisted plan |
 | `GET /api/conductor/plans/:id` | Read the public plan without answer keys |
 | `POST /api/conductor/stations/:stationId/answer` | Grade a submitted answer |
-| `POST /api/conductor/ask` | Answer a question about the study material |
+| `POST /api/conductor/stations/:stationId/evaluate` | Station verdict from the mean score, with the professor's feedback |
+| `POST /api/conductor/ask` | The TA answers from the stored material, the station, and recent exchanges |
+| `POST /api/conductor/timer` | Length and message for a study stretch or break |
 
 Plan creation first produces station outlines, then generates questions for
-stations in parallel and persists the assembled route. MCQ grading is local;
-short answers and study questions use tools. Public schemas strip answer keys
-before returning plans to the browser. Routes also carry optional
-`usedFallback` metadata when planning or question generation used samples.
-The route summary displays a warning and offers Regenerate route, which
-bypasses the library's remembered plan without deleting materials. Sample
-routes are not remembered or reused automatically; older plans without the
-flag can still be regenerated explicitly.
+stations in parallel and persists the assembled route with its materials.
+Single-choice and select-all grading is local; short answers use the grader
+tool. Public schemas strip answer keys before returning plans to the browser.
+
+Sample content never becomes a route. If plan-route or any station's
+generate-questions falls back to its fixture, `POST /plans` returns 503
+`AI provider unavailable: <first error>` (for example
+`GROQ_FLASH_MODEL is not set`) and saves nothing; the web shows that
+message. `usedFallback` survives only on plans saved before this rule; the
+route summary still warns about those and offers Regenerate route, and they
+are never remembered for reuse.
+
+A station passes when the mean of its question scores reaches
+`PASS_THRESHOLD` (0.7, in shared). The API applies it and the web labels the
+overall score with it, so the verdict and the score always agree;
+evaluate-progress only writes feedback for the decided verdict.
+
+The TA (ask-conductor) receives the plan's stored materials, the current
+station's scope as focus, and the last `MAX_ASK_HISTORY` answered exchanges
+from the ask panel. Plans saved before materials were stored answer from the
+scope alone.
 
 Tools run through the harness: a flash-tier attempt plus up to two retries,
-then one pro-tier escalation, then a fixture if all attempts fail. Tools that
-request confidence checks use the configured threshold (currently 0.6).
-Successful results are cached by tool name/input. Provider calls have bounded
-waiting and trace records. Fixture fallback does not replace the database:
-plan persistence still requires a writable SQLite file.
+then one pro-tier escalation, then a fixture if all attempts fail. Each
+failed attempt and fallback is logged. Every tool sends its persona as the
+vendor's system instruction (Gemini `systemInstruction`, a Groq system
+message) with its own temperature. Tools that request confidence checks use
+the configured threshold (currently 0.6). Successful results are cached by
+tool name/input in a bounded map; set-timer opts out so its message varies.
+Fixture fallback does not replace the database: plan persistence still
+requires a writable SQLite file.
+
+`LLM_PROVIDER` defaults to Gemini. The chosen vendor needs its API key and
+both model names; the API logs what it found at startup (key length only).
 
 ## Study history
 

@@ -115,6 +115,7 @@ beforeEach(() => {
     error: null,
     historyId: null,
     departed: false,
+    pausedStudyMs: null,
   });
 });
 
@@ -201,6 +202,22 @@ describe("studyAll", () => {
     await useStudySession.getState().studyAll();
     expect(useStudySession.getState().plan?.usedFallback).toBe(true);
     expect(useMaterialLibrary.getState().planId).toBeNull();
+  });
+
+  test("shows the server's reason when the route cannot be built", async () => {
+    const failure = Object.assign(
+      new Error("AI provider unavailable: GROQ_FLASH_MODEL is not set"),
+      { name: "ConductorApiError" },
+    );
+    apiMocks.createPlan.mockRejectedValue(failure);
+    addTwoMaterials();
+
+    await useStudySession.getState().studyAll();
+
+    expect(useStudySession.getState().error).toBe(
+      "AI provider unavailable: GROQ_FLASH_MODEL is not set",
+    );
+    expect(useStudySession.getState().busy).toBe(false);
   });
 
   test("does nothing with an empty library", async () => {
@@ -391,6 +408,41 @@ describe("chooseBreak", () => {
 
     expect(useStudySession.getState().mode).toBe("on-break");
     expect(speechOf()?.text).toBe(VOICE_LINES.takeBreak.text);
+  });
+
+  test("mid-study, parks the train and resumes the rest of the stretch after the break", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Rest up" });
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() + 10 * 60_000 });
+
+    await useStudySession.getState().chooseBreak();
+    applyStudyPhase();
+
+    expect(useStudySession.getState().mode).toBe("on-break");
+    expect(useStudySession.getState().pausedStudyMs).toBeGreaterThan(9 * 60_000);
+    expect(useWorld.getState().trains.local?.phase).toBe("stopped");
+
+    useStudySession.getState().skipTimer(); // the break ends
+    applyStudyPhase();
+
+    const s = useStudySession.getState();
+    expect(s.mode).toBe("counting");
+    expect(s.pausedStudyMs).toBeNull();
+    expect((s.timerEndsAt ?? 0) - Date.now()).toBeGreaterThan(9 * 60_000);
+    expect(useWorld.getState().trains.local?.phase).toBe("running");
+    expect(speechOf()?.text).toBe(VOICE_LINES.restartStudy.text);
+  });
+
+  test("at a station, the break ends back at the station", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Rest up" });
+    useStudySession.getState().startSession(plan);
+    useStudySession.setState({ mode: "at-station" });
+
+    await useStudySession.getState().chooseBreak();
+    expect(useStudySession.getState().pausedStudyMs).toBeNull();
+
+    useStudySession.getState().skipTimer();
+    expect(useStudySession.getState().mode).toBe("at-station");
   });
 });
 

@@ -52,6 +52,11 @@ interface StudySessionState {
   error: string | null;
   historyId: string | null;
   departed: boolean;
+  /**
+   * Study time left when a break was taken mid-stretch; the stretch resumes
+   * with this much once the break ends. Null for a break taken at a station.
+   */
+  pausedStudyMs: number | null;
 
   hydrate: () => Promise<void>;
   startSession: (plan: PublicRoutePlan) => void;
@@ -118,6 +123,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   error: null,
   historyId: null,
   departed: false,
+  pausedStudyMs: null,
 
   hydrate: async () => {
     if (get().plan) return; // A route remount in the same page keeps the live run.
@@ -145,6 +151,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       error: null,
       historyId: null,
       departed: false,
+      pausedStudyMs: null,
     });
     persist(get());
   },
@@ -174,9 +181,18 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         useMaterialLibrary.getState().setPlanId(plan.usedFallback ? null : plan.id);
       }
       get().startSession(plan);
-    } catch {
+    } catch (error) {
       if (revision !== sessionRevision) return;
-      set({ busy: false, error: "Could not build a route from your materials. Try again." });
+      // The API says why ("AI provider unavailable: GROQ_FLASH_MODEL is not
+      // set"); a network failure has nothing better than the generic line.
+      // Matched by name, not instanceof, so this module needs only ./api's
+      // functions.
+      const reason =
+        error instanceof Error && error.name === "ConductorApiError" ? error.message : null;
+      set({
+        busy: false,
+        error: reason ?? "Could not build a route from your materials. Try again.",
+      });
     }
   },
 
@@ -253,8 +269,20 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       });
       persist(get());
     } else if (state.mode === "on-break") {
-      sayText("Break's over.");
-      set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
+      // A break taken mid-stretch picks the stretch up where it stopped; one
+      // taken at a station returns to the station.
+      if (state.pausedStudyMs !== null) {
+        sayLine("restartStudy");
+        set({
+          mode: "counting",
+          timerEndsAt: Date.now() + state.pausedStudyMs,
+          timerMessage: "Break's over — back to studying.",
+          pausedStudyMs: null,
+        });
+      } else {
+        sayText("Break's over.");
+        set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
+      }
       persist(get());
     }
   },
@@ -317,11 +345,19 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         previousMinutes: state.lastStretchMinutes ?? undefined,
       });
       if (revision !== sessionRevision) return;
+      // Measured when the break actually starts, not at the click: the study
+      // timer kept running while the model chose a length.
+      const current = get();
+      const pausedStudyMs =
+        current.mode === "counting" && current.timerEndsAt !== null
+          ? Math.max(0, current.timerEndsAt - Date.now())
+          : null;
       set({
         mode: "on-break",
         timerEndsAt: Date.now() + minutes * 60_000,
         timerMessage: message,
         busy: false,
+        pausedStudyMs,
       });
       persist(get());
     } catch {
@@ -459,6 +495,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       error: null,
       historyId: null,
       departed: false,
+      pausedStudyMs: null,
     });
   },
 }));
