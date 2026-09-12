@@ -233,7 +233,10 @@ plan persistence still requires a writable SQLite file.
 | `POST /api/study-sessions/:id/end` | End a session as `completed` or `quit` |
 | `GET /api/study-sessions?userId=` | List a user's sessions, newest first, for the dashboard |
 
-`features/conductor/history.ts` calls these with a bounded timeout; writes
+`features/conductor/history.ts` sends the browser ID in `CHAT_USER_HEADER`.
+Routes require that caller ID to match the requested user or stored session
+owner; another caller gets no access to the run. This is still placeholder
+identity, not authentication. The client calls use a bounded timeout; writes
 fail silently so a missing API never blocks a study session, and the read
 throws so the dashboard can say history is unavailable. The study session
 records its `historyId` in persisted state so a resumed session keeps

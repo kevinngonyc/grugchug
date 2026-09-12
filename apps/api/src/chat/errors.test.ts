@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { explainFailure, guard } from "./errors";
 
-test("says nothing specific about anything, since storage has no external setup to misconfigure", () => {
+test("unexpected failures do not expose internal details", () => {
   expect(explainFailure(new Error("Cannot read properties of undefined"))).toBe(
     "something went wrong on the server",
   );
@@ -28,4 +28,12 @@ test("guard passes a successful response through untouched", async () => {
 test("guard forwards every argument", async () => {
   const wrapped = guard("test route", async (a: number, b: string) => `${a}${b}`);
   expect(await wrapped(1, "x")).toBe("1x");
+});
+
+test("storage permission failures explain setup without exposing paths", () => {
+  for (const code of ["SQLITE_CANTOPEN", "SQLITE_READONLY_DIRECTORY", "EACCES", "EPERM", "EROFS"]) {
+    const cause = Object.assign(new Error("secret/path"), { code });
+    expect(explainFailure(cause)).toContain("check SQLITE_PATH");
+    expect(explainFailure(cause)).not.toContain("secret/path");
+  }
 });

@@ -56,7 +56,8 @@ describe("RosterList", () => {
       <RosterList
         members={[
           { userId: "u1", displayName: "Ada", efficiency: 0.5, avatar: "cat", journey },
-          { userId: "u2", displayName: "Bob", efficiency: 0.5 },
+          { userId: "c", displayName: "Bob", efficiency: 0.5 },
+          { userId: "a", displayName: "Cy", efficiency: 0.5 },
         ]}
       />,
     );
@@ -67,6 +68,7 @@ describe("RosterList", () => {
 
     const images = [...container.querySelectorAll("img")];
     expect(images[0]?.getAttribute("src")).toBe("/characters/cat.png");
-    expect(images[1]?.getAttribute("src")).toBe("/characters/default.svg");
+    expect(images[1]?.getAttribute("src")).toBe("/characters/poku.png");
+    expect(images[2]?.getAttribute("src")).toBe("/characters/bonbon.png");
   });
 });

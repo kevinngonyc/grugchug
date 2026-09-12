@@ -1,4 +1,5 @@
 import {
+  CHAT_USER_HEADER,
   type StartStudySessionRequest,
   type StationResultRequest,
   type StudyOutcome,
@@ -6,6 +7,8 @@ import {
   studySessionSchema,
   studySessionSummarySchema,
 } from "@grugchug/shared";
+
+import { getUserId } from "@/lib/user-id";
 
 // History is a record, not a dependency: every write here fails quietly so a
 // missing API never stops a study session. Reads (the dashboard) throw so the
@@ -15,7 +18,7 @@ export const HISTORY_TIMEOUT_MS = 3000;
 function post(url: string, body: unknown, fetchFn: typeof fetch): Promise<Response> {
   return fetchFn(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", [CHAT_USER_HEADER]: getUserId() },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(HISTORY_TIMEOUT_MS),
   });
@@ -65,6 +68,7 @@ export async function fetchHistory(
   fetchFn: typeof fetch = fetch,
 ): Promise<StudySessionSummary[]> {
   const res = await fetchFn(`/api/study-sessions?userId=${encodeURIComponent(userId)}`, {
+    headers: { [CHAT_USER_HEADER]: getUserId() },
     signal: AbortSignal.timeout(HISTORY_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`GET /api/study-sessions failed with ${res.status}`);

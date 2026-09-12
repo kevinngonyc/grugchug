@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { CHAT_USER_HEADER } from "@grugchug/shared";
+import { getUserId } from "@/lib/user-id";
 import { endHistory, fetchHistory, recordHistory, startHistory } from "./history";
 
 type Call = { url: string; init: RequestInit | undefined };
@@ -29,6 +31,7 @@ describe("history", () => {
     expect(id).toBe("s1");
     expect(calls[0]?.url).toBe("/api/study-sessions");
     expect(calls[0]?.init?.method).toBe("POST");
+    expect(new Headers(calls[0]?.init?.headers).get(CHAT_USER_HEADER)).toBe(getUserId());
     expect(calls[0]?.init?.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -49,6 +52,8 @@ describe("history", () => {
       "/api/study-sessions/s1/stations",
       "/api/study-sessions/s1/end",
     ]);
+    for (const call of calls)
+      expect(new Headers(call.init?.headers).get(CHAT_USER_HEADER)).toBe(getUserId());
     const { fetchFn: failing } = fakeFetch(500, {});
     await expect(endHistory("s1", "quit", failing)).resolves.toBeUndefined();
   });
@@ -69,6 +74,8 @@ describe("history", () => {
     const { calls, fetchFn } = fakeFetch(200, [summary]);
     expect(await fetchHistory("u1", fetchFn)).toEqual([summary]);
     expect(calls[0]?.url).toBe("/api/study-sessions?userId=u1");
+    for (const call of calls)
+      expect(new Headers(call.init?.headers).get(CHAT_USER_HEADER)).toBe(getUserId());
     const { fetchFn: failing } = fakeFetch(500, {});
     await expect(fetchHistory("u1", failing)).rejects.toThrow();
   });

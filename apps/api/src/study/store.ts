@@ -55,6 +55,16 @@ function toResult(row: ResultRow): StationResult {
   };
 }
 
+export async function getStudySession(
+  id: string,
+  db: Database = getDatabase(),
+): Promise<StudySession | null> {
+  const row = db
+    .query<SessionRow, [string]>(`SELECT ${SESSION_COLUMNS} FROM study_sessions WHERE id = ?`)
+    .get(id);
+  return row ? toSession(row) : null;
+}
+
 export async function startStudySession(
   input: StartStudySessionRequest,
   db: Database = getDatabase(),

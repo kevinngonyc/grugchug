@@ -8,41 +8,30 @@ import {
   stationResultRequestSchema,
   userIdSchema,
 } from "@grugchug/shared";
-import type { z } from "zod";
 import {
   endStudySession,
+  getStudySession,
   listStudySessions,
   recordStationResult,
   startStudySession,
 } from "../study/store";
-
-function problem(status: number, error: string, detail?: string): Response {
-  return Response.json({ error, ...(detail === undefined ? {} : { detail }) }, { status });
-}
-
-async function readBody<S extends z.ZodType>(
-  req: Request,
-  schema: S,
-): Promise<{ ok: true; data: z.output<S> } | { ok: false; response: Response }> {
-  const body: unknown = await req.json().catch(() => undefined);
-  if (body === undefined)
-    return { ok: false, response: problem(400, "invalid body", "body must be JSON") };
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return { ok: false, response: problem(400, "invalid body", parsed.error.issues[0]?.message) };
-  }
-  return { ok: true, data: parsed.data };
-}
+import { callerId, problem, readBody } from "./http";
 
 export function createStudySessionRoutes(db: Database) {
   return {
     async create(req: Request): Promise<Response> {
       const body = await readBody(req, startStudySessionRequestSchema);
       if (!body.ok) return body.response;
+      if (!callerId(req)) return problem(401, "unauthorized");
+      if (callerId(req) !== body.data.userId) return problem(403, "forbidden");
       return Response.json(await startStudySession(body.data, db));
     },
 
     async record(id: string, req: Request): Promise<Response> {
+      const userId = callerId(req);
+      if (!userId) return problem(401, "unauthorized");
+      const owned = await getStudySession(id, db);
+      if (!owned || owned.userId !== userId) return problem(404, "study session not found");
       const body = await readBody(req, stationResultRequestSchema);
       if (!body.ok) return body.response;
       const result = await recordStationResult(id, body.data, db);
@@ -50,6 +39,10 @@ export function createStudySessionRoutes(db: Database) {
     },
 
     async end(id: string, req: Request): Promise<Response> {
+      const userId = callerId(req);
+      if (!userId) return problem(401, "unauthorized");
+      const owned = await getStudySession(id, db);
+      if (!owned || owned.userId !== userId) return problem(404, "study session not found");
       const body = await readBody(req, endStudySessionRequestSchema);
       if (!body.ok) return body.response;
       const session = await endStudySession(id, body.data.outcome, db);
@@ -60,6 +53,8 @@ export function createStudySessionRoutes(db: Database) {
       const userId = userIdSchema.safeParse(new URL(req.url).searchParams.get("userId") ?? "");
       if (!userId.success)
         return problem(400, "invalid user id", "userId query parameter required");
+      if (!callerId(req)) return problem(401, "unauthorized");
+      if (callerId(req) !== userId.data) return problem(403, "forbidden");
       return Response.json(await listStudySessions(userId.data, db));
     },
   };

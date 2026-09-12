@@ -3,13 +3,17 @@
 // body and nothing in the server console, which is a bad afternoon.
 import type { ChatErrorCode } from "@grugchug/shared";
 
-/**
- * A short, actionable sentence for the client. The full error is logged
- * server-side; storage is an embedded SQLite file with nothing external to
- * misconfigure or fail to reach, so there is no local setup mistake left
- * worth naming here.
- */
-export function explainFailure(_cause: unknown): string {
+/** Keep paths and raw errors in server logs; give storage setup guidance. */
+export function explainFailure(cause: unknown): string {
+  const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+  if (
+    typeof code === "string" &&
+    ["SQLITE_CANTOPEN", "SQLITE_READONLY", "EACCES", "EPERM", "EROFS"].some(
+      (known) => code === known || code.startsWith(`${known}_`),
+    )
+  ) {
+    return "storage is not writable; check SQLITE_PATH and permissions on the database file and its directory";
+  }
   return "something went wrong on the server";
 }
 
