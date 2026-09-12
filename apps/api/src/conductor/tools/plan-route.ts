@@ -37,10 +37,13 @@ export const planRouteToolSpec: ToolSpec<PlanRouteInput, PlanRouteOutput> = {
   name: "plan-route",
   inputSchema: planRouteInputSchema,
   outputSchema: planRouteOutputSchema,
+  system:
+    "You are an experienced curriculum designer. You turn a learner's study materials into a route of study stations: distinct, contiguous chunks of the material in a sensible learning order, each described precisely enough that a question writer who never sees the source could quiz on it. Stay strictly within what the materials cover. Respond with JSON only.",
+  temperature: 0.3,
   prompt: (input) => [
     {
       kind: "text",
-      text: `You are building a study route through the ${input.materials.length} attached ${input.materials.length === 1 ? "material" : "materials, which the learner is studying as one body of work"}${input.availableMinutes ? ` for a learner with about ${input.availableMinutes} minutes` : ""}.
+      text: `Build a study route through the ${input.materials.length} attached ${input.materials.length === 1 ? "material" : "materials, which the learner is studying as one body of work"}${input.availableMinutes ? ` for a learner with about ${input.availableMinutes} minutes` : ""}.
 Break the material into at most ${MAX_STATIONS} stations, each covering a distinct, contiguous chunk of the material in a sensible learning order. Never output more than ${MAX_STATIONS} stations. Size each station's estimatedMinutes to how much it actually covers — dense or unfamiliar material earns more time, a light recap earns less.
 Respond with JSON only, matching exactly this shape:
 {"stations": [{"id": string, "index": number (0-based, in route order), "title": string, "scope": string (a precise description of what this station covers — detailed enough that someone could write quiz questions from it alone, without seeing the source material again), "estimatedMinutes": number}]}${input.availableMinutes ? "\nThe sum of estimatedMinutes should roughly match the learner's available time." : ""}`,

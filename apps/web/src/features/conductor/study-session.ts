@@ -174,9 +174,18 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         useMaterialLibrary.getState().setPlanId(plan.usedFallback ? null : plan.id);
       }
       get().startSession(plan);
-    } catch {
+    } catch (error) {
       if (revision !== sessionRevision) return;
-      set({ busy: false, error: "Could not build a route from your materials. Try again." });
+      // The API says why ("AI provider unavailable: GROQ_FLASH_MODEL is not
+      // set"); a network failure has nothing better than the generic line.
+      // Matched by name, not instanceof, so this module needs only ./api's
+      // functions.
+      const reason =
+        error instanceof Error && error.name === "ConductorApiError" ? error.message : null;
+      set({
+        busy: false,
+        error: reason ?? "Could not build a route from your materials. Try again.",
+      });
     }
   },
 

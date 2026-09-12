@@ -2,7 +2,6 @@
 // each handler's deps parameter — no SQLite, no LLM calls.
 import { describe, expect, test } from "bun:test";
 import type { Question, RoutePlan } from "@grugchug/shared";
-import { fixtureRoutePlan } from "../conductor/fixtures";
 import type { ToolRunResult } from "../conductor/harness";
 import type { EvaluateProgressOutput } from "../conductor/tools/evaluate-progress";
 import type { GenerateQuestionsOutput } from "../conductor/tools/generate-questions";
@@ -134,35 +133,84 @@ describe("createPlan", () => {
     expect(res.status).toBe(400);
   });
 
-  test("falls back to fixture questions for a station whose generation call throws, without failing the route", async () => {
-    let calls = 0;
-    const res = await createPlanWithDeps(
-      post("/api/conductor/plans", {
-        userId: "u1",
-        availableMinutes: 20,
-        materials: [{ kind: "text", text: "notes" }],
-      }),
-      {
-        runPlanRoute: async () => toolResult<PlanRouteOutput>({ stations: skeletons }),
-        runGenerateQuestions: async () => {
-          calls++;
-          if (calls === 1) throw new Error("boom");
-          return toolResult<GenerateQuestionsOutput>({ questions: fourQuestions });
+  // A fixture is sample content, not the learner's material: the route is
+  // refused with the provider's reason rather than saved looking real.
+  function fellBack<T>(output: T, error: string): ToolRunResult<T> {
+    return {
+      output,
+      fellBackToFixture: true,
+      trace: [
+        {
+          tool: "t",
+          provider: "none",
+          model: "none",
+          tier: "flash",
+          latencyMs: 0,
+          attempt: 1,
+          escalated: false,
+          cacheHit: false,
+          ok: false,
+          error,
         },
-        save: async () => {},
+      ],
+    };
+  }
+
+  test("refuses with 503 and the reason when plan-route fell back to its fixture", async () => {
+    let saved = false;
+    const res = await createPlanWithDeps(
+      post("/api/conductor/plans", { userId: "u1", materials: [{ kind: "text", text: "notes" }] }),
+      {
+        runPlanRoute: async () =>
+          fellBack<PlanRouteOutput>(
+            { stations: skeletons },
+            "no provider available: GROQ_FLASH_MODEL is not set",
+          ),
+        runGenerateQuestions: async () => {
+          throw new Error("should not be called");
+        },
+        save: async () => {
+          saved = true;
+        },
       },
     );
 
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.usedFallback).toBe(true);
-    // Station 0 fell back: keeps its real id/title/scope, generic fixture questions.
-    const fixtureFirstStation = fixtureRoutePlan.stations[0];
-    if (!fixtureFirstStation) throw new Error("fixtureRoutePlan has no stations");
-    expect(body.stations[0].id).toBe("s1");
-    expect(body.stations[0].questions).toHaveLength(fixtureFirstStation.questions.length);
-    // Station 1 used the real (fake) generated questions with rewritten ids.
-    expect(body.stations[1].questions.map((q: { id: string }) => q.id)[0]).toBe("s2-q1");
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe(
+      "AI provider unavailable: no provider available: GROQ_FLASH_MODEL is not set",
+    );
+    expect(saved).toBe(false);
+  });
+
+  test("refuses with 503 when any station's questions fell back or threw", async () => {
+    for (const failure of ["fell back", "threw"] as const) {
+      let saved = false;
+      let calls = 0;
+      const res = await createPlanWithDeps(
+        post("/api/conductor/plans", {
+          userId: "u1",
+          materials: [{ kind: "text", text: "notes" }],
+        }),
+        {
+          runPlanRoute: async () => toolResult<PlanRouteOutput>({ stations: skeletons }),
+          runGenerateQuestions: async () => {
+            calls++;
+            if (calls === 2) {
+              if (failure === "threw") throw new Error("boom");
+              return fellBack<GenerateQuestionsOutput>({ questions: fourQuestions }, "quota");
+            }
+            return toolResult<GenerateQuestionsOutput>({ questions: fourQuestions });
+          },
+          save: async () => {
+            saved = true;
+          },
+        },
+      );
+
+      expect(res.status).toBe(503);
+      expect((await res.json()).error).toContain(failure === "threw" ? "boom" : "quota");
+      expect(saved).toBe(false);
+    }
   });
 
   test("returns 500 without saving a broken plan when the store fails", async () => {
@@ -527,8 +575,10 @@ describe("evaluateProgress", () => {
   });
 });
 
+// Sample content never becomes a route: a fixture in either phase is a 503
+// with nothing saved, and a real route carries no fallback mark at all.
 test.each(["plan", "questions", "none"])(
-  "marks persisted and public fallback provenance: %s",
+  "never persists or returns fallback content: %s",
   async (failure) => {
     let saved: RoutePlan | undefined;
     const response = await createPlanWithDeps(
@@ -547,10 +597,16 @@ test.each(["plan", "questions", "none"])(
         },
       },
     );
-    expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.usedFallback).toBe(failure !== "none");
-    expect(saved?.usedFallback).toBe(failure !== "none");
-    expect(JSON.stringify(body)).not.toMatch(answerKeys);
+    if (failure === "none") {
+      expect(response.status).toBe(200);
+      expect(body.usedFallback).toBeUndefined();
+      expect(saved?.usedFallback).toBeUndefined();
+      expect(JSON.stringify(body)).not.toMatch(answerKeys);
+    } else {
+      expect(response.status).toBe(503);
+      expect(body.error).toStartWith("AI provider unavailable:");
+      expect(saved).toBeUndefined();
+    }
   },
 );

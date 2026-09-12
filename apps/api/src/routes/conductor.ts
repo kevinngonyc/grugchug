@@ -2,11 +2,12 @@
 // grade answers, and field questions mid-study.
 //
 // createPlan runs two phases: plan-route breaks the material into stations,
-// then generate-questions runs per station in parallel. Neither tool ever
-// throws (the harness degrades to its own fixture internally); a station
-// whose generation call still fails outright falls back to fixture
-// questions here, so one bad station never fails the whole route. The
-// assembled plan is persisted, and every other endpoint reads it back.
+// then generate-questions runs per station in parallel. Neither tool throws —
+// the harness degrades to its own fixture — but a fixture is sample content
+// about photosynthesis, never the learner's material. So if either phase fell
+// back, the request fails with 503 and the reason ("GROQ_FLASH_MODEL is not
+// set") instead of saving a route that only looks real. The assembled plan is
+// persisted, and every other endpoint reads it back.
 //
 // Each handler takes its real dependencies (tool runners, store functions)
 // as a defaulted parameter, so tests can inject fakes and stay offline —
@@ -23,13 +24,12 @@ import {
   evaluateProgressResponseSchema,
   type Material,
   publicRoutePlanSchema,
-  type Question,
   type RoutePlan,
   type Station,
   setTimerRequestSchema,
   setTimerResponseSchema,
 } from "@grugchug/shared";
-import { fixtureRoutePlan } from "../conductor/fixtures";
+import { fallbackReason } from "../conductor/harness";
 import { getRoutePlanById, saveRoutePlan } from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
 import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
@@ -59,14 +59,8 @@ function materialHash(materials: readonly Material[]): string {
   return hasher.digest("hex");
 }
 
-// Used only when generate-questions fails outright for a station (the
-// harness's own fixture fallback means this is a last resort). The
-// station's real id/title/scope from plan-route are kept; only the
-// questions are generic filler.
-function fixtureQuestionsFor(index: number): Question[] {
-  const station = fixtureRoutePlan.stations[index % fixtureRoutePlan.stations.length];
-  if (!station) throw new Error("fixtureRoutePlan has no stations");
-  return station.questions;
+function unavailable(reason: string): Response {
+  return Response.json({ error: `AI provider unavailable: ${reason}` }, { status: 503 });
 }
 
 export interface CreatePlanDeps {
@@ -81,16 +75,19 @@ const defaultCreatePlanDeps: CreatePlanDeps = {
   save: saveRoutePlan,
 };
 
+type BuiltStation = { ok: true; station: Station } | { ok: false; reason: string };
+
 async function buildStation(
   skeleton: StationSkeleton,
   materials: readonly Material[],
-  index: number,
   runGenerateQuestions: CreatePlanDeps["runGenerateQuestions"],
-): Promise<{ station: Station; usedFallback: boolean }> {
+): Promise<BuiltStation> {
   try {
     const result = await runGenerateQuestions({ scope: skeleton.scope, materials: [...materials] });
+    const reason = fallbackReason(result);
+    if (reason) return { ok: false, reason };
     return {
-      usedFallback: result.fellBackToFixture,
+      ok: true,
       station: {
         ...skeleton,
         questions: result.output.questions.map((q, qi) => ({
@@ -99,8 +96,8 @@ async function buildStation(
         })),
       },
     };
-  } catch {
-    return { station: { ...skeleton, questions: fixtureQuestionsFor(index) }, usedFallback: true };
+  } catch (error) {
+    return { ok: false, reason: describeError(error) };
   }
 }
 
@@ -113,16 +110,21 @@ export async function createPlanWithDeps(req: Request, deps: CreatePlanDeps): Pr
   const { userId, availableMinutes, materials } = body.data;
 
   const planResult = await deps.runPlanRoute({ materials, availableMinutes });
+  const routeFailure = fallbackReason(planResult);
+  if (routeFailure) return unavailable(routeFailure);
+
   const builtStations = await Promise.all(
-    planResult.output.stations.map((skeleton, i) =>
-      buildStation(skeleton, materials, i, deps.runGenerateQuestions),
+    planResult.output.stations.map((skeleton) =>
+      buildStation(skeleton, materials, deps.runGenerateQuestions),
     ),
   );
 
-  const stations = builtStations.map((result) => result.station);
+  const stations: Station[] = [];
+  for (const built of builtStations) {
+    if (!built.ok) return unavailable(built.reason);
+    stations.push(built.station);
+  }
   const plan: RoutePlan = {
-    usedFallback:
-      planResult.fellBackToFixture || builtStations.some((result) => result.usedFallback),
     id: crypto.randomUUID(),
     userId,
     materialHash: materialHash(materials),

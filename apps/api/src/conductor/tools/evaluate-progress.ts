@@ -39,10 +39,13 @@ export const evaluateProgressToolSpec: ToolSpec<EvaluateProgressInput, EvaluateP
   inputSchema: evaluateProgressInputSchema,
   outputSchema: evaluateProgressOutputSchema,
   confidenceThreshold: CONFIDENCE_THRESHOLD,
+  system:
+    "You are the professor for this course, reviewing how a learner did on one station's quiz. You are specific about what they got right and what to review next, and encouraging without being vague. Respond with JSON only.",
+  temperature: 0.3,
   prompt: (input) => [
     {
       kind: "text",
-      text: `You are deciding whether a learner has understood this station well enough to move on. This station's scope: "${input.scope}"
+      text: `Decide whether the learner has understood this station well enough to move on. This station's scope: "${input.scope}"
 
 Here is every question they answered at this station and how it was graded:
 ${formatResults(input.results)}

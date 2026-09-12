@@ -203,6 +203,22 @@ describe("studyAll", () => {
     expect(useMaterialLibrary.getState().planId).toBeNull();
   });
 
+  test("shows the server's reason when the route cannot be built", async () => {
+    const failure = Object.assign(
+      new Error("AI provider unavailable: GROQ_FLASH_MODEL is not set"),
+      { name: "ConductorApiError" },
+    );
+    apiMocks.createPlan.mockRejectedValue(failure);
+    addTwoMaterials();
+
+    await useStudySession.getState().studyAll();
+
+    expect(useStudySession.getState().error).toBe(
+      "AI provider unavailable: GROQ_FLASH_MODEL is not set",
+    );
+    expect(useStudySession.getState().busy).toBe(false);
+  });
+
   test("does nothing with an empty library", async () => {
     await useStudySession.getState().studyAll();
 

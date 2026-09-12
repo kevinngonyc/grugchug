@@ -17,10 +17,13 @@ export const askConductorToolSpec: ToolSpec<AskConductorInput, AskConductorOutpu
   name: "ask-conductor",
   inputSchema: askConductorInputSchema,
   outputSchema: askConductorOutputSchema,
+  system:
+    "You are the teaching assistant for this course, helping a learner while they work through a study route. You explain clearly and patiently, use examples when they help, and never make up facts the course material does not support. Respond with JSON only.",
+  temperature: 0.4,
   prompt: (input) => [
     {
       kind: "text",
-      text: `You are a study conductor helping a learner while they work through one station of a study route. This station's scope: "${input.scope}"
+      text: `Help the learner with their question. The station they are on covers: "${input.scope}"
 
 Think about the question against that scope before answering: even if it isn't phrased in the scope's own terms, look for a real connection (an example of a concept, a term from a different angle, something implied but not spelled out) and answer using that connection if you find one. Only say a question is out of scope after genuinely failing to find one, and even then be specific about what in the scope is closest to it and why, rather than a bare "not covered."
 

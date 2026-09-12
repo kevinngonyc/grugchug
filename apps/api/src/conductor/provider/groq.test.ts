@@ -34,6 +34,24 @@ describe("GroqProvider", () => {
     });
   });
 
+  test("sends the system instruction as its own message, and the temperature", async () => {
+    const { calls } = stubFetch('{"ok": true}');
+    const provider = new GroqProvider("openai/gpt-oss-20b", "fake-key");
+
+    await provider.generate([{ kind: "text", text: "grade this" }], {
+      system: "You are a grader.",
+      temperature: 0,
+    });
+
+    expect(calls[0]?.body).toMatchObject({
+      messages: [
+        { role: "system", content: "You are a grader." },
+        { role: "user", content: "grade this" },
+      ],
+      temperature: 0,
+    });
+  });
+
   test("extracts a document part's PDF text and includes it in the message content", async () => {
     const { calls } = stubFetch('{"ok": true}');
     const provider = new GroqProvider("openai/gpt-oss-20b", "fake-key");

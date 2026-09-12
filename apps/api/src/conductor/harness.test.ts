@@ -1,8 +1,8 @@
 // Offline: every provider here is a fake in-memory function, no network.
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { runTool, type ToolSpec } from "./harness";
-import type { LLMProvider, ProviderPart, Tier } from "./provider";
+import { fallbackReason, runTool, type ToolSpec } from "./harness";
+import type { GenerateOptions, LLMProvider, ProviderPart, Tier } from "./provider";
 
 const outputSchema = z.object({ answer: z.number() });
 type Output = z.infer<typeof outputSchema>;
@@ -22,6 +22,7 @@ function makeSpec(
     name: "test-tool",
     inputSchema: z.object({ q: z.string() }),
     outputSchema,
+    system: "You are a test tool.",
     prompt: (input) => [{ kind: "text", text: input.q } satisfies ProviderPart],
     fixture: () => ({ answer: -1 }),
     ...overrides,
@@ -145,6 +146,55 @@ describe("runTool", () => {
     expect(calls).toBe(1);
     expect(second.output).toEqual(first.output);
     expect(second.trace[0]).toMatchObject({ cacheHit: true });
+  });
+
+  test("sends the tool's system instruction and temperature with the request", async () => {
+    const spec = makeSpec({ temperature: 0.2 });
+    const seen: Array<GenerateOptions | undefined> = [];
+    const resolve = (): LLMProvider => ({
+      provider: "gemini",
+      model: "gemini-flash",
+      generate: async (_parts, options) => {
+        seen.push(options);
+        return { text: '{"answer": 3}', provider: "gemini", model: "gemini-flash" };
+      },
+    });
+
+    await runTool(spec, { q: "unique-system-case" }, resolve);
+
+    expect(seen).toEqual([{ system: "You are a test tool.", temperature: 0.2 }]);
+  });
+
+  test("a tool that opts out of caching asks the provider every time", async () => {
+    const spec = makeSpec({ cache: false });
+    let calls = 0;
+    const resolve = (): LLMProvider => ({
+      provider: "gemini",
+      model: "gemini-flash",
+      generate: async () => {
+        calls++;
+        return { text: '{"answer": 5}', provider: "gemini", model: "gemini-flash" };
+      },
+    });
+
+    const input = { q: "unique-no-cache-case" };
+    await runTool(spec, input, resolve);
+    const second = await runTool(spec, input, resolve);
+
+    expect(calls).toBe(2);
+    expect(second.trace[0]).toMatchObject({ cacheHit: false });
+  });
+
+  test("fallbackReason names the first failure, and is null for a real answer", async () => {
+    const failed = await runTool(makeSpec(), { q: "unique-reason-case" }, () => {
+      throw new Error("GROQ_FLASH_MODEL is not set");
+    });
+    expect(fallbackReason(failed)).toBe("no provider available: GROQ_FLASH_MODEL is not set");
+
+    const ok = await runTool(makeSpec(), { q: "unique-reason-ok-case" }, () =>
+      fakeProvider("gemini", "gemini-flash", '{"answer": 1}'),
+    );
+    expect(fallbackReason(ok)).toBeNull();
   });
 
   test("escalates when flash confidence is below the tool's threshold, even if the schema matches", async () => {

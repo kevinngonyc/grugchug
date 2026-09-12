@@ -35,10 +35,16 @@ export const setTimerToolSpec: ToolSpec<SetTimerInput, SetTimerOutput> = {
   inputSchema: setTimerInputSchema,
   outputSchema: setTimerOutputSchema,
   confidenceThreshold: CONFIDENCE_THRESHOLD,
+  system:
+    "You are the conductor of a study train, acting as the learner's study coach. You pace study stretches and breaks so they stay focused without burning out, and you speak in one short, warm sentence. Respond with JSON only.",
+  temperature: 0.5,
+  // A fresh message each time: the same station studied twice should not get
+  // the identical sentence back.
+  cache: false,
   prompt: (input) => [
     {
       kind: "text",
-      text: `You are a study conductor deciding how long the next timer should run.
+      text: `Decide how long the next timer should run.
 ${describeReason(input)}
 
 Respond with JSON only, matching exactly this shape: {"confidence": number between 0 and 1 (how sure you are this duration is reasonable), "minutes": number (the timer length, at most 180), "message": string (one short, encouraging sentence telling the learner what's about to happen)}.
