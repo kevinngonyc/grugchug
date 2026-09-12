@@ -6,6 +6,7 @@ import {
 } from "@grugchug/shared";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { getUserId } from "@/lib/user-id";
 import { createRoom, joinRoom, listRooms } from "./api";
 import { type ChatIdentity, identityFromMember, readIdentity, writeIdentity } from "./identity";
 import { buttonClass, cardClass, inputClass, labelClass } from "./ui";
@@ -52,7 +53,7 @@ export function ChatRoomsView() {
       const response = await createRoom({
         name: roomName,
         displayName,
-        userId: identity?.userId ?? null,
+        userId: identity?.userId ?? getUserId(),
       });
       setIdentity(writeIdentity(identityFromMember(response.member)));
       void navigate(`/chat/${response.room.id}`);
@@ -64,7 +65,7 @@ export function ChatRoomsView() {
       const response = await joinRoom({
         inviteCode,
         displayName,
-        userId: identity?.userId ?? null,
+        userId: identity?.userId ?? getUserId(),
       });
       setIdentity(writeIdentity(identityFromMember(response.member)));
       void navigate(`/chat/${response.room.id}`);

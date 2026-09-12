@@ -1,6 +1,7 @@
 import { DISPLAY_NAME_MAX_LENGTH } from "@grugchug/shared";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { getUserId } from "@/lib/user-id";
 import { joinRoom } from "./api";
 import { identityFromMember, readIdentity, writeIdentity } from "./identity";
 import { buttonClass, cardClass, inputClass, labelClass } from "./ui";
@@ -24,7 +25,7 @@ export function JoinRoomView({ inviteCode }: JoinRoomViewProps) {
       const response = await joinRoom({
         inviteCode,
         displayName,
-        userId: identity?.userId ?? null,
+        userId: identity?.userId ?? getUserId(),
       });
       writeIdentity(identityFromMember(response.member));
       void navigate(`/chat/${response.room.id}`, { replace: true });
