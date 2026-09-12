@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test";
-import { foldAttention } from "./attention";
+import { foldAttention, NEUTRAL_ATTENTION } from "./attention";
 
 const HALF_LIFE = 60_000;
 
-test("the first observation is the starting value, not a climb from zero", () => {
-  expect(foldAttention(null, true, 0, HALF_LIFE)).toBe(1);
-  expect(foldAttention(null, false, 0, HALF_LIFE)).toBe(0);
+test("the first observation opens at neutral, not a snap to either extreme", () => {
+  expect(foldAttention(null, true, 0, HALF_LIFE)).toBe(NEUTRAL_ATTENTION);
+  expect(foldAttention(null, false, 0, HALF_LIFE)).toBe(NEUTRAL_ATTENTION);
+});
+
+test("once time passes, the first reading starts easing toward what it sees", () => {
+  expect(foldAttention(null, true, 200, HALF_LIFE)).toBeGreaterThan(NEUTRAL_ATTENTION);
+  expect(foldAttention(null, false, 200, HALF_LIFE)).toBeLessThan(NEUTRAL_ATTENTION);
 });
 
 test("one half-life of looking away costs half of what was there", () => {

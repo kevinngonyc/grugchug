@@ -133,9 +133,9 @@ room. The server names each socket on `ready` and the client picks itself out
 of the roster by that name, never by stored identity, which a second tab can
 overwrite. Anyone turning up on the roster restarts the
 sitting — a stranger, someone back after closing the tab, a reconnecting
-socket, all one event from inside the room. `useEfficiency.zero()` puts the
-focus score on the floor for everyone present, to be earned back, and speed
-follows the score down on its own. `regroup()` lines the companion trains up
+socket, all one event from inside the room. `useEfficiency.neutralize()` puts
+the focus score at neutral for everyone present, to be earned up or down from
+there evenly, and speed follows the score on its own. `regroup()` lines the companion trains up
 level to match; the scene reads the `regroups` count in its frame loop rather
 than subscribing, so no regroup can land on a subscription that was not
 mounted yet. A companion outside the camera frame is represented by

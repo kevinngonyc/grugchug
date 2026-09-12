@@ -111,18 +111,23 @@ speed. Once they agree it is just where they happened to end up, so it eases
 shut: a friend who vanished during a bad stretch is back inside the frame
 within a minute of matching your pace, arriving at a walk rather than a jump.
 
-Anyone joining is a fresh start for the sitting: **the focus score drops to
-zero for everyone in the room**, to be earned back. Nobody is a hundred metres
-up the line on credit from before the newcomer arrived. Every client sees the
-same arrival and does the same thing, so the whole party drops together, and
-the trains slow to a crawl on their own because speed is only ever the score.
+Anyone joining is a fresh start for the sitting: **the focus score returns to
+neutral for everyone in the room**, to be earned up or down from there. Nobody
+is a hundred metres up the line on credit from before the newcomer arrived,
+and nobody who was slacking is punished further for it either. Every client
+sees the same arrival and does the same thing, so the whole party levels
+together, and the trains ease toward a middling speed on their own because
+speed is only ever the score.
 
-Zeroing has to hold the sources down rather than forget them. Forgetting every
-signal leaves the score at *neutral*, not nothing, and attention opens at
-whatever it sees next — so a reading a second later would put the score
-straight back where it was. Held at zero, attention folds *up* from the floor
-at its own half-life: about a minute of eyes on the screen to earn half of it
-back. That is what makes it something to climb out of rather than a flicker.
+Neutralizing has to hold the sources at neutral rather than forget them.
+Forgetting every signal already leaves the score at neutral too, so for a
+source that has gone quiet the two look the same — but attention keeps
+reporting on its own, and its very next reading blends *from* whatever value
+it is holding. Left forgotten, that next reading would reopen at neutral by
+itself anyway (see its own half-life above), so holding it there explicitly is
+what keeps a reading already in flight from landing on some other value the
+instant it arrives, and it is what makes the walk back up (or down) to a real
+score something earned at attention's own half-life, not a flicker.
 
 Their trains are also lined up level again, so they do not arrive to find
 everyone strung out over a kilometre and mostly off screen. That costs no

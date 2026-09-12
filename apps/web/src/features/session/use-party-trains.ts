@@ -44,12 +44,13 @@ export function syncPartyTrains(
   // which is right: coming back is joining.
   //
   // Somebody turning up restarts the sitting for everyone present. The focus
-  // score goes to the floor and has to be earned back, so nobody is a hundred
-  // metres up the line on credit from before the newcomer arrived; every
+  // score returns to neutral and is earned up or down from there, so nobody
+  // is a hundred metres up the line on credit from before the newcomer
+  // arrived, and nobody who was slacking is punished for it either; every
   // client in the room sees the same arrival and does the same thing, so the
-  // whole party drops together. `regroup()` lines the trains up to match.
+  // whole party levels together. `regroup()` lines the trains up to match.
   if (arrivals(roster, known, selfId).length > 0) {
-    useEfficiency.getState().zero();
+    useEfficiency.getState().neutralize();
     world.regroup();
   }
   known = new Set(

@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from "bun:test";
 import type { ChatPresenceMember } from "@/features/chat";
-import { useEfficiency } from "@/features/efficiency";
+import { EFFICIENCY_SCORE_NEUTRAL, useEfficiency } from "@/features/efficiency";
 import { useWorld } from "@/features/world";
 import { partyTrainId } from "./party";
 import { syncPartyTrains } from "./use-party-trains";
@@ -62,7 +62,7 @@ test("presence never brings back a line that the speech player already cleared",
   expect(useWorld.getState().trains[id]?.speech).toBeUndefined();
 });
 
-test("somebody turning up puts everyone's focus score back on the floor", () => {
+test("somebody turning up puts everyone's focus score back to neutral", () => {
   const store = useEfficiency.getState();
   store.reset();
   store.report("quiz", 1, { weight: 1 });
@@ -73,7 +73,7 @@ test("somebody turning up puts everyone's focus score back on the floor", () => 
   expect(useEfficiency.getState().score).toBeGreaterThan(90);
 
   syncPartyTrains(roster, SELF, known);
-  expect(useEfficiency.getState().score).toBe(0);
+  expect(useEfficiency.getState().score).toBe(EFFICIENCY_SCORE_NEUTRAL);
 });
 
 test("the line regroups when anyone turns up, including coming back", () => {
