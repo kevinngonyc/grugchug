@@ -272,6 +272,8 @@ requires a writable SQLite file.
 
 `LLM_PROVIDER` defaults to Gemini. The chosen vendor needs its API key and
 both model names; the API logs what it found at startup (key length only).
+If that vendor is exhausted, the harness tries the other vendor when it is
+fully configured, then the fixture.
 
 ## Study history
 
@@ -295,7 +297,8 @@ Pending API work is invalidated when quitting or starting another route so
 late responses cannot restart a finished session.
 
 `provider/index.ts` selects Gemini or Groq through `LLM_PROVIDER` and reads the
-vendor's API key and flash/pro model variables. Gemini receives PDF bytes;
+vendor's API key and flash/pro model variables. The other vendor is a
+fallback when those three values are set. Gemini receives PDF bytes;
 Groq receives locally extracted PDF text. Tests inject tool/provider/store
 dependencies and never contact these services.
 
