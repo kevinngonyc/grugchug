@@ -136,10 +136,14 @@ All from the repo root.
   status in the route summary and do not remember sample plans for reuse.
   Regenerate route bypasses a saved plan without deleting uploaded materials.
 - Conductor API tools use `conductor/harness.ts` and `provider/index.ts` for
-  validation, retries, provider/model selection, and fixture fallback. Keep
-  model names in environment configuration and dependencies injectable so
-  tests never call LLMs or touch a real database. Public responses must strip
-  answer keys.
+  validation, retries, provider/model selection, and fixture fallback. Each
+  tool declares its persona in `system`, never in the user prompt. A fixture
+  must never be saved or shown as the learner's content: createPlan returns
+  503 with `fallbackReason` instead. Keep model names in environment
+  configuration and dependencies injectable so tests never call LLMs or touch
+  a real database. Public responses must strip answer keys.
+- A station's verdict is `mean score >= PASS_THRESHOLD`, decided in the API;
+  the LLM writes feedback for it, never the verdict itself.
 - Reuse `apps/api/src/routes/http.ts` for caller IDs, JSON/schema validation,
   and problem responses; preserve each route's existing error format.
 - Study-history requests send the browser ID in `CHAT_USER_HEADER`. Require
