@@ -30,7 +30,7 @@ describe("userProfileSchema", () => {
   });
 
   test("strips fields the client may not set", () => {
-    const parsed = userProfileSchema.parse({ name: "Ada", avatar: user.avatar });
+    const parsed = userProfileSchema.parse({ ...user, name: "Ada" });
     expect(parsed).toEqual({ name: "Ada", avatar: "poku" });
   });
 });
