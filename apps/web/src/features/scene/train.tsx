@@ -18,9 +18,9 @@ import { Smoke } from "./smoke";
 
 type TrainProps = { trainId: string; motion: RefObject<LaneMotion> };
 
-// Locomotive at the lane origin, one carriage behind it. Faces +x. Wheel
-// Individual wheel nodes spin about local x. The wheels-* meshes contain
-// multiple axles and must stay fixed or the entire bogie tumbles.
+// Locomotive at the lane origin, one carriage behind it. Faces +x. Only the
+// individual "wheel" nodes spin about local x; the "wheels-*" nodes are whole
+// bogies (two axles and a frame in one mesh) and would tumble if rotated.
 export function Train({ trainId, motion }: TrainProps) {
   const spriteUrl = useWorld((s) => s.trains[trainId]?.owner.spriteUrl);
   const locomotive = useGLTF(MODELS.locomotive);

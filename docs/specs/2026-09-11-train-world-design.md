@@ -124,5 +124,11 @@ train" button that seeds another lane with random phase changes.
   off the local train and the dev panel needs to know which train is ours.
 - The Train Kit glbs reference `Textures/colormap.png` by relative path rather
   than embedding it; the atlas is committed beside them.
-- Lanes are staggered forward by `LANE_STAGGER` so a friend's train shows ahead
-  of yours instead of hiding directly behind it in the side view.
+- All lanes share the local train's scroll instead of each lane owning its own
+  motion. Friends' trains stay in line with yours, so no rails slide against
+  each other. Only the local lane spawns stations; a friend's break is not
+  shown in the scene yet.
+- The camera sits on the far side of the track, close in, so the train runs
+  right to left with friends' lanes behind it.
+- The conductor sprite rides every locomotive; the owner's sprite rides in the
+  carriage.

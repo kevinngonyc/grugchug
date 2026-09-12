@@ -1,7 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { useWorld } from "@/features/world";
-import { LANE_SPACING, LANE_STAGGER, STATION_DISTANCE, VISIBLE_HALF_WIDTH } from "./constants";
+import { LANE_SPACING, STATION_DISTANCE, VISIBLE_HALF_WIDTH } from "./constants";
 import type { LaneMotion } from "./motion";
 import { Scenery } from "./scenery";
 import { Station } from "./station";
@@ -12,17 +12,20 @@ type LaneProps = { trainId: string; motion: RefObject<LaneMotion> };
 
 type StationSpot = { id: number; worldX: number; terminus: boolean };
 
-// One train's strip of world. Owns that train's motion state and decides
-// when a station exists.
+// One train's strip of world. Every lane scrolls with the shared motion of the
+// local train, so friends stay in line; only the local lane spawns stations,
+// because a friend's break cannot stop a world that keeps moving.
 export function Lane({ trainId, motion }: LaneProps) {
   const lane = useWorld((s) => s.trains[trainId]?.lane ?? 0);
   const phase = useWorld((s) => s.trains[trainId]?.phase);
+  const isLocal = useWorld((s) => s.localTrainId === trainId);
   const [stations, setStations] = useState<StationSpot[]>([]);
   const nextStationId = useRef(0);
   const pendingStation = useRef(false);
 
-  // Each train keeps its station status; travel follows the local train.
+  // Phase changes on the local train are the only thing that creates a station.
   useEffect(() => {
+    if (!isLocal) return;
     const m = motion.current;
     if (phase === "running" || phase === undefined) {
       pendingStation.current = false;
@@ -41,7 +44,7 @@ export function Lane({ trainId, motion }: LaneProps) {
     pendingStation.current = true;
     const id = nextStationId.current++;
     setStations((list) => [...list, { id, worldX: target, terminus }]);
-  }, [phase, motion]);
+  }, [phase, motion, isLocal]);
 
   useFrame(() => {
     const scroll = motion.current.scroll;
@@ -53,7 +56,7 @@ export function Lane({ trainId, motion }: LaneProps) {
   const stationXs = stations.map((s) => s.worldX);
 
   return (
-    <group position={[lane * LANE_STAGGER, 0, lane * LANE_SPACING]}>
+    <group position-z={lane * LANE_SPACING}>
       <Track motion={motion} />
       <Scenery motion={motion} stationXs={stationXs} />
       {stations.map((s) => (
