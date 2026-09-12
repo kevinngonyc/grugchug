@@ -38,6 +38,8 @@ and persists them, `scene` reads session metrics to animate. `gaze` and
 | `src/index.ts` | `Bun.serve` with a `routes` table under `/api` |
 | `src/routes/` | One file per resource, exporting plain request handlers |
 | `src/db.ts` | Lazy MongoDB connection from `MONGODB_URI` |
+| `src/routes/conductor.ts` | Conductor endpoints: create/get a route plan, grade answers, ask |
+| `src/conductor/` | Turns study material into a route of stations with questions. `fixtures.ts` is the fallback route |
 
 Handlers validate bodies with schemas from `packages/shared` before touching
 the database.
@@ -50,6 +52,7 @@ the database.
 | `session` | One study sitting, start to stop |
 | `gazeSample` | A gaze estimate at time `t`, viewport-normalized `x, y`, `onScreen` |
 | `typingSample` | A keystroke at time `t` and whether it was a correction |
+| `conductor` | `RoutePlan` of `Station`s with `Question`s, answer and ask bodies. `public*` variants strip answer keys for the browser |
 
 ## Deferred
 
