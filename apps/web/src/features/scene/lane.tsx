@@ -10,7 +10,7 @@ import { Train } from "./train";
 
 type LaneProps = { trainId: string };
 
-type StationSpot = { worldX: number; terminus: boolean };
+type StationSpot = { id: number; worldX: number; terminus: boolean };
 
 // One train's strip of world. Owns that train's motion state and decides
 // when a station exists.
@@ -18,7 +18,8 @@ export function Lane({ trainId }: LaneProps) {
   const lane = useWorld((s) => s.trains[trainId]?.lane ?? 0);
   const phase = useWorld((s) => s.trains[trainId]?.phase);
   const motion = useRef(createMotion());
-  const [station, setStation] = useState<StationSpot | null>(null);
+  const [stations, setStations] = useState<StationSpot[]>([]);
+  const nextStationId = useRef(0);
 
   useEffect(() => {
     registerMotion(trainId, motion.current);
@@ -34,13 +35,17 @@ export function Lane({ trainId }: LaneProps) {
     }
     const terminus = phase === "finished";
     if (m.stopTarget !== null) {
-      setStation((s) => (s ? { ...s, terminus } : s));
+      // A stop is already pending or the train is resting at it: only the
+      // newest station's role changes, older departing stations are untouched.
+      setStations((list) => list.map((s, i) => (i === list.length - 1 ? { ...s, terminus } : s)));
       return;
     }
     // A train that is already standing still gets its station right here.
     const distance = m.speed < 0.01 ? 0 : STATION_DISTANCE;
-    m.stopTarget = m.scroll + distance;
-    setStation({ worldX: m.stopTarget, terminus });
+    const target = m.scroll + distance;
+    m.stopTarget = target;
+    const id = nextStationId.current++;
+    setStations((list) => [...list, { id, worldX: target, terminus }]);
   }, [phase]);
 
   useFrame((_, dt) => {
@@ -48,8 +53,9 @@ export function Lane({ trainId }: LaneProps) {
     if (!train) return;
     const cruise = targetSpeed({ phase: "running", efficiency: train.efficiency });
     stepMotion(motion.current, cruise, targetSpeed(train), Math.min(dt, 0.1));
-    if (station && station.worldX - motion.current.scroll < -VISIBLE_HALF_WIDTH) {
-      setStation(null);
+    const scroll = motion.current.scroll;
+    if (stations.some((s) => s.worldX - scroll < -VISIBLE_HALF_WIDTH)) {
+      setStations((list) => list.filter((s) => s.worldX - scroll >= -VISIBLE_HALF_WIDTH));
     }
   });
 
@@ -57,9 +63,9 @@ export function Lane({ trainId }: LaneProps) {
     <group position-z={-lane * LANE_SPACING}>
       <Track motion={motion} />
       <Scenery motion={motion} />
-      {station ? (
-        <Station motion={motion} worldX={station.worldX} terminus={station.terminus} />
-      ) : null}
+      {stations.map((s) => (
+        <Station key={s.id} motion={motion} worldX={s.worldX} terminus={s.terminus} />
+      ))}
       <Train trainId={trainId} motion={motion} />
     </group>
   );
