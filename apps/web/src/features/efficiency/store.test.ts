@@ -92,6 +92,26 @@ test("dropping a source removes it from the blend", () => {
 });
 
 describe("neutralize", () => {
+  test("does not bring back a signal that had already faded out", () => {
+    // A quiz from two hours ago has decayed to nothing. Pinning it to neutral
+    // with a fresh timestamp would give it its full weight back and cap eyes-
+    // on-screen below full marks for the next hour.
+    useEfficiency.getState().reset();
+    useEfficiency
+      .getState()
+      .report("quiz", 0.2, { label: "Quiz", weight: 0.5, halfLifeMs: 10 * 60_000, at: NOW });
+    const later = NOW + 2 * 60 * 60_000;
+    seedFullAttention(later);
+    expect(useEfficiency.getState().score).toBeCloseTo(100, 6);
+
+    useEfficiency.getState().neutralize(later);
+    expect(useEfficiency.getState().signals.quiz).toBeUndefined();
+
+    // Attention earns its way back up alone; nothing stale drags on it.
+    for (let s = 1; s <= 600; s++) useEfficiency.getState().reportAttention(true, later + s * 1000);
+    expect(useEfficiency.getState().score).toBeGreaterThan(99);
+  });
+
   test("puts the score at neutral, not the floor", () => {
     const store = useEfficiency.getState();
     store.reset();
