@@ -26,7 +26,7 @@ through `src/features/<feature>/index.ts`.
 | Path | Responsibility |
 |---|---|
 | `src/app.tsx`, `src/routes/` | Dashboard, session, Settings, invite landing page, and redirects from old chat URLs |
-| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page; WebGazer's per-frame loop is paused and one face estimate is requested per 200 ms sample. Webcam preview and diagnostics are dev-only |
+| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Webcam preview and diagnostics are dev-only |
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
 | `src/features/session/` | Drives local efficiency, banks today's focused time (`focus-time.ts`, score/100 per second, per day in localStorage), sends both to chat, and maps the chat roster to companion trains |

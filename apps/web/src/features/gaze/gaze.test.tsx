@@ -8,7 +8,7 @@ const resume = mock(() => Promise.resolve({}));
 const end = mock(() => ({}));
 const removeMouseEventListeners = mock(() => ({}));
 const saveDataAcrossSessions = mock((_save: boolean) => Promise.resolve({}));
-const getEyeFeatures = mock(() => Promise.resolve(null));
+let positions: number[][] | null = null;
 
 const fluent: Record<string, ReturnType<typeof mock>> = {
   showVideoPreview: mock(),
@@ -27,8 +27,7 @@ mock.module("@webgazer-ts/core", () => ({
     end,
     removeMouseEventListeners,
     saveDataAcrossSessions,
-    getEyeFeatures,
-    getTracker: () => ({ getPositions: () => null }),
+    getTracker: () => ({ getPositions: () => positions }),
   },
 }));
 
@@ -43,46 +42,49 @@ afterEach(async () => {
   // The tracker is shared module state: wait for the last user's release to
   // end it, so the next test starts a fresh one.
   await waitFor(() => expect(end).toHaveBeenCalled());
-  for (const fn of [begin, pause, resume, end, removeMouseEventListeners, getEyeFeatures]) {
-    fn.mockClear();
-  }
+  for (const fn of [begin, pause, resume, end, removeMouseEventListeners]) fn.mockClear();
   saveDataAcrossSessions.mockClear();
   setHidden(false);
+  positions = null;
 });
 
-test("pauses WebGazer's own per-frame loop once it has started", async () => {
+test("starts WebGazer without the click-based regression it never reads", async () => {
   render(<Gaze />);
 
-  await waitFor(() => expect(pause).toHaveBeenCalled());
-  expect(begin).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
   expect(saveDataAcrossSessions).toHaveBeenCalledWith(false);
   expect(removeMouseEventListeners).toHaveBeenCalled();
+  // The detection loop itself keeps running — sampling reads it, rather than
+  // driving detection at a lower rate, which is what tracking accuracy relies on.
+  expect(pause).not.toHaveBeenCalled();
 });
 
-test("asks for one face estimate per sample instead", async () => {
+test("pauses webgazer when the tab is hidden", async () => {
   render(<Gaze />);
-
-  await waitFor(() => expect(getEyeFeatures).toHaveBeenCalled());
-  expect(resume).not.toHaveBeenCalled();
-});
-
-test("a hidden tab asks for no estimates, and sampling picks up on return", async () => {
-  render(<Gaze />);
-  await waitFor(() => expect(getEyeFeatures).toHaveBeenCalled());
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
 
   act(() => {
     setHidden(true);
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  getEyeFeatures.mockClear();
-  await new Promise((resolve) => setTimeout(resolve, 450));
-  expect(getEyeFeatures).not.toHaveBeenCalled();
 
+  expect(pause).toHaveBeenCalled();
+});
+
+test("resumes webgazer when the tab becomes visible again", async () => {
+  render(<Gaze />);
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
+
+  act(() => {
+    setHidden(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
   act(() => {
     setHidden(false);
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await waitFor(() => expect(getEyeFeatures).toHaveBeenCalled());
+
+  await waitFor(() => expect(resume).toHaveBeenCalled());
 });
 
 test("StrictMode's double mount shares one tracker and ends it once", async () => {
@@ -91,8 +93,7 @@ test("StrictMode's double mount shares one tracker and ends it once", async () =
       <Gaze />
     </StrictMode>,
   );
-  await waitFor(() => expect(pause).toHaveBeenCalled());
-  expect(begin).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
   expect(end).not.toHaveBeenCalled();
 
   unmount();
