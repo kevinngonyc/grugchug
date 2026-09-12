@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { journeySchema } from "./journey";
+import { avatarIdSchema } from "./user";
 
 // Chat: one room at a time, the people connected to it, and what they say.
 // Everything here crosses the HTTP or WebSocket boundary, or lands in MongoDB.
@@ -74,6 +76,10 @@ export const chatPresenceMemberSchema = z.object({
   userId: userIdSchema,
   displayName: displayNameSchema,
   efficiency: z.number().min(0).max(1),
+  // The rider's picked character and where they are on their route. Optional
+  // on the wire so an older client that never sends them still parses.
+  avatar: avatarIdSchema.optional(),
+  journey: journeySchema.optional(),
 });
 
 export type ChatRoom = z.infer<typeof chatRoomSchema>;
@@ -142,6 +148,13 @@ export const clientChatEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("focus"),
     efficiency: z.number().min(0).max(1),
+  }),
+  // Where you are on your route and what you look like, so the room can draw
+  // your train stopping at a station with your own avatar in the cart.
+  z.object({
+    type: z.literal("journey"),
+    avatar: avatarIdSchema,
+    journey: journeySchema,
   }),
 ]);
 
