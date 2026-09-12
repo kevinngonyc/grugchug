@@ -13,9 +13,25 @@ interface ConductorUiState {
   toggle: () => void;
 }
 
+// Closing always marks this whole region aria-hidden, but the button that
+// just closed it (Continue, Submit, the X) is still focused when that
+// happens — the browser blocks hiding a focused descendant. Blurring first
+// avoids it; there's nothing useful to move focus to instead, since the
+// panel is gone.
+function blurWithin(): void {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
+
 export const useConductorUi = create<ConductorUiState>((set) => ({
   open: false,
   openPanel: () => set({ open: true }),
-  closePanel: () => set({ open: false }),
-  toggle: () => set((s) => ({ open: !s.open })),
+  closePanel: () => {
+    blurWithin();
+    set({ open: false });
+  },
+  toggle: () =>
+    set((s) => {
+      if (s.open) blurWithin();
+      return { open: !s.open };
+    }),
 }));

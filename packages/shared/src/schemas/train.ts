@@ -22,11 +22,14 @@ export type Speech = z.infer<typeof speechSchema>;
 
 // One train in the world. `efficiency` is the 0..1 study score that affects
 // the train; `lane` is which track it runs on, 0 being closest to the camera.
+// `focusedSeconds` is its rider's focused time banked today, what the
+// leaderboard ranks by; absent means none yet.
 export const trainStateSchema = z.object({
   id: z.string().min(1),
   owner: trainOwnerSchema,
   phase: trainPhaseSchema,
   efficiency: z.number().min(0).max(1),
+  focusedSeconds: z.number().nonnegative().optional(),
   lane: z.number().int().nonnegative(),
   speech: speechSchema.optional(),
 });

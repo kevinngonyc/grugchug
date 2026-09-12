@@ -119,6 +119,29 @@ test("a journey event reaches the room without spending the message budget", asy
   expect(bob.sent.some((event) => event.type === "error")).toBe(false);
 });
 
+test("a focus report carries the sender's banked focus time to the room", async () => {
+  open(ada);
+  open(bob);
+  const journey = { state: "at-station", station: { index: 2, total: 6 } };
+  await chatWebSocket.message(ada.ws, JSON.stringify({ type: "journey", avatar: "cat", journey }));
+
+  await chatWebSocket.message(
+    ada.ws,
+    JSON.stringify({ type: "focus", efficiency: 0.5, focusedSeconds: 90 }),
+  );
+  // A steady score with a growing total is still news.
+  await chatWebSocket.message(
+    ada.ws,
+    JSON.stringify({ type: "focus", efficiency: 0.5, focusedSeconds: 92 }),
+  );
+
+  const last = [...bob.sent].reverse().find((event) => event.type === "presence");
+  expect(last?.type === "presence" && last.members[0]?.focusedSeconds).toBe(92);
+  expect(presenceMembers(bob)[0]).toMatchObject({ avatar: "cat", journey, focusedSeconds: 92 });
+  await chatWebSocket.message(ada.ws, JSON.stringify({ type: "journey", avatar: "poku", journey }));
+  expect(presenceMembers(bob)[0]).toMatchObject({ avatar: "poku", journey, focusedSeconds: 92 });
+});
+
 test("rooms do not see each other", () => {
   const cy = fake("u3", "Cy", "r2");
   open(ada);

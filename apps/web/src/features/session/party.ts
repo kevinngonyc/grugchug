@@ -79,6 +79,7 @@ export function partyTrains(
       },
       phase: phaseForJourney(member.journey),
       efficiency: Math.min(1, Math.max(0, member.efficiency)),
+      focusedSeconds: Math.max(0, member.focusedSeconds ?? 0),
       lane: index + 1,
     }));
 }

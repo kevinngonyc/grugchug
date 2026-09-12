@@ -23,7 +23,7 @@ describe("phaseForMode", () => {
   test("only counting runs; complete is the terminus; the rest wait at a platform", () => {
     expect(phaseForMode("counting")).toBe("running");
     expect(phaseForMode("complete")).toBe("finished");
-    for (const mode of ["idle", "at-station", "answering", "on-break"] as const) {
+    for (const mode of ["idle", "at-station", "answering", "on-break", "passed"] as const) {
       expect(phaseForMode(mode)).toBe("stopped");
     }
   });
@@ -44,6 +44,10 @@ describe("journeyForSession", () => {
     expect(journeyForSession({ mode: "at-station", stationIndex: 0, plan }).state).toBe(
       "at-station",
     );
+    expect(journeyForSession({ mode: "passed", stationIndex: 1, plan })).toEqual({
+      state: "at-station",
+      station: { index: 1, total: 3 },
+    });
     expect(journeyForSession({ mode: "complete", stationIndex: 2, plan }).state).toBe("finished");
   });
 });

@@ -34,7 +34,7 @@ import { getRoutePlanById, saveRoutePlan } from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
 import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
 import { generateQuestionsTool } from "../conductor/tools/generate-questions";
-import { gradeMcq, gradeShortAnswerTool } from "../conductor/tools/grade-answer";
+import { gradeMcq, gradeMulti, gradeShortAnswerTool } from "../conductor/tools/grade-answer";
 import type { StationSkeleton } from "../conductor/tools/plan-route";
 import { planRouteTool } from "../conductor/tools/plan-route";
 import { setTimerTool } from "../conductor/tools/set-timer";
@@ -213,6 +213,8 @@ export async function answerStationWithDeps(
   let result: AnswerResult;
   if (question.type === "mcq" && answer.type === "mcq") {
     result = gradeMcq(question, answer.choiceIndex);
+  } else if (question.type === "multi" && answer.type === "multi") {
+    result = gradeMulti(question, answer.choiceIndices);
   } else if (question.type === "short" && answer.type === "short") {
     const graded = await deps.gradeShort({
       rubric: question.rubric,

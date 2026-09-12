@@ -28,6 +28,8 @@ export interface ChatSocketData {
   /** The rider's picked character and where they are on their route, once sent. */
   avatar?: AvatarId;
   journey?: Journey;
+  /** Focused time banked today, as last reported by this connection's client. */
+  focusedSeconds: number;
   limiter: RateLimiter;
 }
 
@@ -63,7 +65,12 @@ export function newSocketData(input: {
   userId: string;
   displayName: string;
 }): ChatSocketData {
-  return { ...input, efficiency: 0, limiter: new RateLimiter(CHAT_RATE_LIMIT) };
+  return {
+    ...input,
+    efficiency: 0,
+    focusedSeconds: 0,
+    limiter: new RateLimiter(CHAT_RATE_LIMIT),
+  };
 }
 
 /**
@@ -80,6 +87,7 @@ export function toPresence(connections: readonly ChatSocketData[]): ChatPresence
       efficiency: data.efficiency,
       ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
       ...(data.journey !== undefined ? { journey: data.journey } : {}),
+      focusedSeconds: data.focusedSeconds,
     });
   }
   return [...byUser.values()];
@@ -158,8 +166,11 @@ async function handleRename(
 // they skip the message rate limiter. The client throttles them; a flood here
 // costs one broadcast to a handful of sockets.
 function handleFocus(ws: ChatSocket, event: Extract<ClientChatEvent, { type: "focus" }>): void {
-  if (ws.data.efficiency === event.efficiency) return;
+  // An older client sends no total; keep whatever this connection last said.
+  const focusedSeconds = event.focusedSeconds ?? ws.data.focusedSeconds;
+  if (ws.data.efficiency === event.efficiency && ws.data.focusedSeconds === focusedSeconds) return;
   ws.data.efficiency = event.efficiency;
+  ws.data.focusedSeconds = focusedSeconds;
   broadcastPresence(ws.data.roomId);
 }
 

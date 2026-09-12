@@ -29,11 +29,12 @@ through `src/features/<feature>/index.ts`.
 | Path | Responsibility |
 |---|---|
 | `src/app.tsx`, `src/routes/` | Dashboard, session, Settings, invite landing page, and redirects from old chat URLs |
-| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. Webcam preview and diagnostics are dev-only |
+| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Webcam preview and diagnostics are dev-only |
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
-| `src/features/session/` | Drives local efficiency, pushes focus and journey status into chat, and maps the chat roster to companion trains that stop at their own stations |
+| `src/features/session/` | Drives local efficiency, banks today's focused time (`focus-time.ts`) and pushes it with focus and journey status into chat, and maps the chat roster to companion trains that stop at their own stations |
 | `src/features/conductor/` | Study session: upload materials, route of stations, timers, answering and grading; drives the local train's phase (`applyStudyPhase`), narrates through speech, reports quiz means to efficiency, records history, and renders `SessionHistory` on the Dashboard |
+| `src/features/leaderboard/` | `FocusBoard`, top-left: every rider's avatar ringed by live focus in a per-player colour, and a leaderboard of focused time. Reads the world store only; hidden while the conductor panel is open |
 | `src/features/world/` | Zustand train intent: owners, phases, efficiency, speech, local train ID, and regroup count. No three.js |
 | `src/features/profile/` | Loads/saves the browser's profile, defines the avatar catalog, and renders the Settings picker |
 | `src/features/speech/` | Voice-line registry, `sayLine` for events the world does not see and `sayText` for an unrecorded line, playback/fallback timing, and clearing finished utterances. Narrating the local train's journey belongs to the study session, not this feature |
@@ -169,7 +170,7 @@ someone else's. The latest `chatMembers.joinedAt` determines the current room.
 HTTP uses `CHAT_USER_HEADER`; the socket passes identity in its query string.
 The server validates events and rate-limits each socket. Messages persist in
 SQLite; live presence is the set of connected sockets and is not stored.
-Roster entries contain user ID, display name, 0..1 efficiency, and, once a
+Roster entries contain user ID, display name, 0..1 efficiency, focused seconds banked today, and, once a
 rider has sent one, their avatar and journey (state plus 1-based station
 position). Multiple tabs for one user produce one rider; the newest
 connection's reading wins.

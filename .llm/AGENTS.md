@@ -4,9 +4,9 @@ Study buddy web app. Webcam head pose drives a study-focus score and a 3D
 train scene. The study session drives the local train's journey end to end —
 upload, route, timer, stations, breaks — and narrates it; chat presence adds
 companion trains that stop at their own stations and carries each rider's
-avatar. React on the front, Bun on the back, SQLite (via `bun:sqlite`) for
-profiles, chat, conductor route plans, and study-session history. Typing
-capture is not implemented yet.
+avatar and banked focus time for the live leaderboard. React on the front,
+Bun on the back, SQLite (via `bun:sqlite`) for profiles, chat, conductor route
+plans, and study-session history. Typing capture is not implemented yet.
 
 `architecture.md` in this directory has the package map and feature
 boundaries. Read it before adding code.
@@ -38,8 +38,8 @@ All from the repo root.
 - `bun run fmt` — `biome check --write .`
 - `bunx shadcn@latest add <component>` — run inside `apps/web`
 - `/session?dev` in the browser — dev panel for phases, manual focus, friend
-  trains, and `chatter` (steps the local conductor through each registered
-  voice line, one per click)
+  trains, `skipTimer` (arrive or end a break immediately), and `chatter` (steps
+  the local conductor through each registered voice line, one per click)
 
 ## Conventions
 
@@ -66,14 +66,27 @@ All from the repo root.
   report into it (`report(source, 0..1, { weight, halfLifeMs })`); readers read
   `score` and never recompute their own. Writing into the world store is split
   three ways and nowhere else: `features/session` writes the local train's
-  efficiency and the companion trains (score, companions); `features/speech`
+  efficiency, banked focus time, and companion trains; `features/speech`
   writes `speech` (utterances); `features/conductor` writes the local train's
   `phase`, through `applyStudyPhase()`, driven by the study session's mode.
   The session route bootstraps the local train and applies profile changes;
   the dev panel also uses world commands directly.
 - `features/chat` never reads another feature's store. The session pushes
-  focus in with `reportFocus()` and reads the roster out with `useRoster()`.
+  focus and focused seconds in with `reportFocus()`, avatar and journey with
+  `reportJourney()`, and reads the roster out with `useRoster()`.
   Shared browser identity lives in `src/lib/user-id.ts`, not in a feature.
+- `features/session/focus-time.ts` banks today's focused seconds from the
+  shared efficiency score and persists the daily total in localStorage.
+  `features/leaderboard` reads the world store only; it never recomputes focus
+  or accumulates time. Presence focus updates must retain avatar/journey,
+  and journey updates must retain banked focus time.
+- The study session's `passed` mode keeps the train stopped and displays quiz
+  feedback until the learner continues. Its station index already points to
+  the next station; presence must report the previous stop while reviewing.
+  Keep narration, quiz efficiency, and history recording when changing these
+  transitions. `skipTimer()` uses the same arrival path as an expired timer.
+- Gaze uses one shared tracker per page. Keep its continuous detection loop
+  running across UI sampling; StrictMode must not start a second camera.
 - Preserve field ownership when applying presence: chat can update the local
   display name, but must keep the profile's selected passenger sprite.
   Friend focus/name updates must retain active `speech`; only the speech
@@ -110,3 +123,9 @@ All from the repo root.
   model names in environment configuration and dependencies injectable so
   tests never call LLMs or touch a real database. Public responses must strip
   answer keys.
+- Reuse `apps/api/src/routes/http.ts` for caller IDs, JSON/schema validation,
+  and problem responses; preserve each route's existing error format.
+- Study-history requests send the browser ID in `CHAT_USER_HEADER`. Require
+  it to match the requested user or stored session owner for reads and writes.
+  This remains placeholder identity, not authentication. History writes must
+  not block studying; dashboard read failures must remain visible.

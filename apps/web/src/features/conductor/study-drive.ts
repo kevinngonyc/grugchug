@@ -24,6 +24,14 @@ export function journeyForSession(s: {
       return { state: "idle", station };
     case "counting":
       return { state: "studying", station };
+    case "passed":
+      // The index already points ahead, but the rider is reviewing the last stop.
+      return {
+        state: "at-station",
+        station: s.plan
+          ? { index: Math.max(1, s.stationIndex), total: s.plan.stations.length }
+          : null,
+      };
     case "at-station":
       return { state: "at-station", station };
     case "answering":

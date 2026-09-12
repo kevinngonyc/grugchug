@@ -1,8 +1,19 @@
 import { useFrame } from "@react-three/fiber";
 import { type RefObject, useRef } from "react";
-import type { Mesh } from "three";
+import { type Mesh, MeshStandardMaterial, SphereGeometry } from "three";
 import { CHIMNEY_OFFSET, SMOKE_LIFE, SMOKE_PUFFS } from "./constants";
 import type { LaneMotion } from "./motion";
+
+// Nothing about a puff's shape or colour differs from one puff to the next,
+// so every puff on every train shares one geometry and one material instead
+// of each carrying its own. The meshes opt out of disposal so a train leaving
+// cannot free what the others are still drawing with.
+const PUFF_GEOMETRY = new SphereGeometry(1, 8, 8);
+const PUFF_MATERIAL = new MeshStandardMaterial({
+  color: "#eeeeee",
+  transparent: true,
+  opacity: 0.6,
+});
 
 type SmokeProps = { motion: RefObject<LaneMotion> };
 
@@ -64,10 +75,10 @@ export function Smoke({ motion }: SmokeProps) {
             meshes.current[i] = m;
           }}
           visible={false}
-        >
-          <sphereGeometry args={[1, 8, 8]} />
-          <meshStandardMaterial color="#eeeeee" transparent opacity={0.6} />
-        </mesh>
+          geometry={PUFF_GEOMETRY}
+          material={PUFF_MATERIAL}
+          dispose={null}
+        />
       ))}
     </group>
   );

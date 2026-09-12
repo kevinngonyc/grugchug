@@ -124,7 +124,9 @@ export function useChatRoom(roomId: string | null, userId: string | null): ChatR
         // Only an open socket can carry the score, and only this one: a stale
         // connection's sink is replaced rather than left to write into a
         // closed socket.
-        setFocusSink((efficiency) => sendEvent({ type: "focus", efficiency }));
+        setFocusSink(({ efficiency, focusedSeconds }) =>
+          sendEvent({ type: "focus", efficiency, focusedSeconds }),
+        );
         setJourneySink((status) => sendEvent({ type: "journey", ...status }));
         void loadHistory();
       };
