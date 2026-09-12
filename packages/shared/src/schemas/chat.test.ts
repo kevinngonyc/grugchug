@@ -65,6 +65,17 @@ describe("wire protocol", () => {
     ).toBe(true);
   });
 
+  test("a presence event carries the whole roster with each rider's score", () => {
+    const members = [{ userId: "u1", displayName: "Kevin", efficiency: 0.75 }];
+    expect(serverChatEventSchema.safeParse({ type: "presence", members }).success).toBe(true);
+    expect(serverChatEventSchema.safeParse({ type: "presence", members: [] }).success).toBe(true);
+  });
+
+  test("a score outside 0..1 is not a presence event", () => {
+    const members = [{ userId: "u1", displayName: "Kevin", efficiency: 1.5 }];
+    expect(serverChatEventSchema.safeParse({ type: "presence", members }).success).toBe(false);
+  });
+
   test("join requests normalize the invite code", () => {
     const parsed = joinRoomRequestSchema.parse({ inviteCode: "k4m7hq2z", displayName: " Ada " });
     expect(parsed.inviteCode).toBe("K4M7HQ2Z");

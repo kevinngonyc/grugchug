@@ -2,14 +2,7 @@
 // now, and Express/Hono/Elysia can be mounted here later if the app outgrows it.
 
 import { chatWebSocket } from "./chat/hub";
-import {
-  chatSocketRoute,
-  createRoomRoute,
-  getRoomRoute,
-  joinRoomRoute,
-  listMessagesRoute,
-  listRoomsRoute,
-} from "./routes/chat";
+import { chatSocketRoute, joinRoomRoute, listMessagesRoute, myRoomRoute } from "./routes/chat";
 import { answerStation, askConductor, createPlan, getPlan } from "./routes/conductor";
 import { health } from "./routes/health";
 
@@ -24,9 +17,8 @@ const server = Bun.serve({
     "/api/conductor/plans/:id": { GET: getPlan },
     "/api/conductor/stations/:stationId/answer": { POST: answerStation },
     "/api/conductor/ask": { POST: askConductor },
-    "/api/chat/rooms": { GET: listRoomsRoute, POST: createRoomRoute },
+    "/api/chat/room": { POST: myRoomRoute },
     "/api/chat/rooms/join": { POST: joinRoomRoute },
-    "/api/chat/rooms/:roomId": { GET: getRoomRoute },
     "/api/chat/rooms/:roomId/messages": { GET: listMessagesRoute },
     "/api/chat/ws": { GET: chatSocketRoute },
   },

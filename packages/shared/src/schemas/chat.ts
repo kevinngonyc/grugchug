@@ -1,7 +1,12 @@
 import { z } from "zod";
 
-// Chat: rooms you create and invite people into, and the messages in them.
+// Chat: one room at a time, the people connected to it, and what they say.
 // Everything here crosses the HTTP or WebSocket boundary, or lands in MongoDB.
+//
+// A browser is in exactly one room: the last one it joined. The server hands
+// that room back on request and creates one the first time, so there is no
+// room list, no room picker, and no joining by typing a code — the invite
+// link is the only way into someone else's room.
 
 export const MESSAGE_MAX_LENGTH = 2000;
 export const DISPLAY_NAME_MAX_LENGTH = 40;
@@ -33,7 +38,8 @@ export const inviteCodeSchema = z
   );
 
 // A room is the whole unit of access: being a member of one is what lets you
-// read and post. There is no friends list and no presence.
+// read and post. There is no friends list; presence is live-only and never
+// stored (see chatPresenceMemberSchema).
 export const chatRoomSchema = z.object({
   id: z.string(),
   name: roomNameSchema,
@@ -60,14 +66,26 @@ export const chatMessageSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
+// Who is connected to the room right now, and how their study is going. This
+// is never stored: it is derived from the open sockets and dies with them.
+// `efficiency` is the 0..1 study score, the same number a train runs on, so a
+// friend's train can pull ahead or fall behind on screen.
+export const chatPresenceMemberSchema = z.object({
+  userId: userIdSchema,
+  displayName: displayNameSchema,
+  efficiency: z.number().min(0).max(1),
+});
+
 export type ChatRoom = z.infer<typeof chatRoomSchema>;
 export type ChatMember = z.infer<typeof chatMemberSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type ChatPresenceMember = z.infer<typeof chatPresenceMemberSchema>;
 
 /* HTTP bodies */
 
-export const createRoomRequestSchema = z.object({
-  name: roomNameSchema,
+// "Give me my room." The server returns the last room this user joined, and
+// creates one the first time. Nothing names a room, because nothing shows it.
+export const myRoomRequestSchema = z.object({
   displayName: displayNameSchema,
 });
 
@@ -83,18 +101,13 @@ export const roomResponseSchema = z.object({
   member: chatMemberSchema,
 });
 
-export const roomListResponseSchema = z.object({
-  rooms: z.array(chatRoomSchema),
-});
-
 export const messagesResponseSchema = z.object({
   messages: z.array(chatMessageSchema),
 });
 
-export type CreateRoomRequest = z.infer<typeof createRoomRequestSchema>;
+export type MyRoomRequest = z.infer<typeof myRoomRequestSchema>;
 export type JoinRoomRequest = z.infer<typeof joinRoomRequestSchema>;
 export type RoomResponse = z.infer<typeof roomResponseSchema>;
-export type RoomListResponse = z.infer<typeof roomListResponseSchema>;
 export type MessagesResponse = z.infer<typeof messagesResponseSchema>;
 
 /* WebSocket wire protocol */
@@ -118,6 +131,18 @@ export const clientChatEventSchema = z.discriminatedUnion("type", [
     clientId: z.string().min(1).max(64),
     body: messageBodySchema,
   }),
+  // Renaming yourself. It changes the name on your membership and on the
+  // presence roster from here on; messages already said keep the old one.
+  z.object({
+    type: z.literal("rename"),
+    displayName: displayNameSchema,
+  }),
+  // Your study score, so the room can draw your train. Sent often enough to
+  // look live and rarely enough not to be chat traffic — the client throttles.
+  z.object({
+    type: z.literal("focus"),
+    efficiency: z.number().min(0).max(1),
+  }),
 ]);
 
 export const serverChatEventSchema = z.discriminatedUnion("type", [
@@ -126,6 +151,12 @@ export const serverChatEventSchema = z.discriminatedUnion("type", [
     type: z.literal("message"),
     message: chatMessageSchema,
     clientId: z.string().nullable(),
+  }),
+  // The whole roster every time, not a diff: it is a handful of people, and a
+  // client that reconnects mid-change should not have to reconcile anything.
+  z.object({
+    type: z.literal("presence"),
+    members: z.array(chatPresenceMemberSchema),
   }),
   z.object({
     type: z.literal("error"),
