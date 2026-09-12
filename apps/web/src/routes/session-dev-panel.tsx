@@ -1,10 +1,23 @@
 import { useEffect, useRef } from "react";
+import { useStudySession } from "@/features/conductor";
 import { effectiveWeight, useEfficiency } from "@/features/efficiency";
 import { sayLine, VOICE_LINES, type VoiceLineId } from "@/features/speech";
 import { type TrainPhase, useWorld } from "@/features/world";
 import { cn } from "@/lib/utils";
 
 const FRIEND_NAMES = ["Ada", "Grace", "Linus", "Margaret", "Dennis"];
+const FRIEND_SPRITES = [
+  "/characters/bonbon.png",
+  "/characters/cat.png",
+  "/characters/doug.png",
+  "/characters/poku.png",
+];
+// Simulated friends' focus wanders a little every tick, and banks focused
+// time at that rate, so the leaderboard and the focus rings have something
+// live to show without a second browser.
+const FRIEND_TICK_MS = 1000;
+const FRIEND_FOCUS_DRIFT = 0.08;
+const FRIEND_MIN_FOCUS = 0.1;
 const PHASES: TrainPhase[] = ["running", "stopped", "finished"];
 const VOICE_LINE_IDS = Object.keys(VOICE_LINES) as VoiceLineId[];
 const CHATTER = [
@@ -30,6 +43,7 @@ export function SessionDevPanel() {
   const manual = signals[MANUAL_SOURCE];
   const local = useWorld((s) => (s.localTrainId === null ? undefined : s.trains[s.localTrainId]));
   const trainCount = useWorld((s) => Object.keys(s.trains).length);
+  const studyMode = useStudySession((s) => s.mode);
   const timers = useRef<ReturnType<typeof setInterval>[]>([]);
   const friendCounter = useRef<number>(0);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -52,12 +66,30 @@ export function SessionDevPanel() {
       id,
       owner: {
         name: FRIEND_NAMES[(liveTrainCount - 1) % FRIEND_NAMES.length] ?? "Friend",
-        spriteUrl: "/characters/bonbon.png",
+        spriteUrl:
+          FRIEND_SPRITES[(liveTrainCount - 1) % FRIEND_SPRITES.length] ?? "/characters/bonbon.png",
       },
       phase: "running",
       efficiency: 0.3 + Math.random() * 0.6,
+      focusedSeconds: 0,
       lane: liveTrainCount,
     });
+    const focus = setInterval(() => {
+      const current = useWorld.getState().trains[id];
+      if (!current) {
+        clearInterval(focus);
+        return;
+      }
+      const drift = (Math.random() * 2 - 1) * FRIEND_FOCUS_DRIFT;
+      const efficiency = Math.min(1, Math.max(FRIEND_MIN_FOCUS, current.efficiency + drift));
+      const world = useWorld.getState();
+      world.setEfficiency(id, efficiency);
+      world.setFocusedSeconds(
+        id,
+        (current.focusedSeconds ?? 0) + (efficiency * FRIEND_TICK_MS) / 1000,
+      );
+    }, FRIEND_TICK_MS);
+    timers.current.push(focus);
     const timer = setInterval(
       () => {
         const current = useWorld.getState().trains[id];
@@ -163,6 +195,15 @@ export function SessionDevPanel() {
       <button type="button" onClick={chatter} className="rounded border px-2 py-1">
         chatter
       </button>
+      {studyMode === "counting" || studyMode === "on-break" ? (
+        <button
+          type="button"
+          onClick={() => useStudySession.getState().skipTimer()}
+          className="rounded border px-2 py-1"
+        >
+          skip study timer
+        </button>
+      ) : null}
     </div>
   );
 }

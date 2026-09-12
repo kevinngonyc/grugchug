@@ -1,5 +1,5 @@
 import webgazer from "@webgazer-ts/core";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface GazeProps {
   /** How long you have to be turned away before we say so. Default: 2000ms. */
@@ -23,6 +23,14 @@ interface GazeProps {
    * `features/efficiency`, which folds it into an attention average).
    */
   onFacing?: (facing: boolean) => void;
+  /**
+   * Called whenever the debounced "looking away" message changes — the same
+   * value shown in this component's own text, gated by `awayThresholdMs` and
+   * the miss tolerance below, unlike `onFacing`'s raw per-tick reading. For a
+   * caller that wants to reflect the headline state (a border colour, an
+   * icon) without re-deriving the debouncing itself.
+   */
+  onLookingAwayChange?: (lookingAway: boolean) => void;
   /**
    * Show live head-pose numbers under the message, and WebGazer's own webcam
    * preview — video, cyan face mesh, feedback box — for tuning the thresholds
@@ -57,6 +65,60 @@ const DISTANCE_REFERENCE_EMA_ALPHA = 0.02;
 // right into the lens) can't make the thresholds absurd.
 const MIN_DISTANCE_FACTOR = 0.6;
 const MAX_DISTANCE_FACTOR = 1.8;
+
+// How often head pose is read from the tracker.
+const SAMPLE_INTERVAL_MS = 200;
+
+// A run of misses this short is treated as noise (a blink, one bad frame)
+// rather than as looking away: reuse the last known pose instead of
+// resetting smoothing and reporting not-facing. Only a longer run — which
+// awayThresholdMs above still gates before anything is shown — means no face
+// is really there. 3 ticks is 600ms, comfortably longer than a blink.
+const MISS_TOLERANCE = 3;
+
+// WebGazer is one camera and one face model per page, however many times
+// React mounts this component (StrictMode mounts twice in dev; changing a
+// threshold re-runs the effect). It is started once and shared, and ended
+// only once nobody is using it — ending it under a mount that has just
+// started would leave that mount reading a dead tracker.
+//
+// Its own loop keeps face mesh running continuously on the main thread,
+// which is the accuracy this component is built on: sampling it (rather
+// than driving detection ourselves at a lower rate) is what keeps tracking
+// stable, since a redetect after a gap is measurably less reliable than one
+// that runs every frame. Stored click data and gaze regression are unused,
+// so those are disabled instead.
+let trackerReady: Promise<void> | null = null;
+let trackerUsers = 0;
+
+function startTracker(): Promise<void> {
+  trackerReady ??= (async () => {
+    // Stored click data and the mouse listeners only ever feed the gaze
+    // regression, which nothing here reads.
+    await webgazer.saveDataAcrossSessions(false);
+    await webgazer.begin();
+    webgazer.removeMouseEventListeners();
+  })().catch((error: unknown) => {
+    // Let the next mount try again (a camera permission granted later).
+    trackerReady = null;
+    throw error;
+  });
+  return trackerReady;
+}
+
+function releaseTracker(): void {
+  trackerUsers -= 1;
+  const ready = trackerReady;
+  if (!ready) return;
+  void ready.then(
+    () => {
+      if (trackerUsers > 0 || trackerReady !== ready) return;
+      trackerReady = null;
+      webgazer.end();
+    },
+    () => {},
+  );
+}
 
 interface HeadPose {
   yaw: number;
@@ -134,6 +196,7 @@ export function Gaze({
   pitchThresholdDown = 0.48,
   pitchThresholdUp = 0.2,
   onFacing,
+  onLookingAwayChange,
   debug = false,
 }: GazeProps) {
   const [lookingAway, setLookingAway] = useState(false);
@@ -143,10 +206,24 @@ export function Gaze({
   const pitchHistoryRef = useRef<number[]>([]);
   const widthHistoryRef = useRef<number[]>([]);
   const referenceWidthRef = useRef<number | null>(null);
-  // Held in a ref so a caller passing an inline arrow does not restart
+  const missesRef = useRef(0);
+  // Held in refs so a caller passing an inline arrow does not restart
   // WebGazer — and the camera — on every render.
   const onFacingRef = useRef(onFacing);
   onFacingRef.current = onFacing;
+  const onLookingAwayChangeRef = useRef(onLookingAwayChange);
+  onLookingAwayChangeRef.current = onLookingAwayChange;
+  const lookingAwayRef = useRef(false);
+
+  // Only the transitions, not every tick that reaffirms the same value. Reads
+  // only refs and the stable setState, so this identity never changes.
+  const reportLookingAway = useCallback((value: boolean) => {
+    if (lookingAwayRef.current !== value) {
+      lookingAwayRef.current = value;
+      onLookingAwayChangeRef.current?.(value);
+    }
+    setLookingAway(value);
+  }, []);
 
   useEffect(() => {
     // Set before begin(): the renderers read these when they are created, so
@@ -159,8 +236,8 @@ export function Gaze({
       .showFaceFeedbackBox(debug)
       .showPredictionPoints(false);
 
-    webgazer.begin();
-
+    let disposed = false;
+    let ready = false;
     let interval: ReturnType<typeof setInterval> | null = null;
 
     const stopSampling = () => {
@@ -168,6 +245,11 @@ export function Gaze({
         clearInterval(interval);
         interval = null;
       }
+    };
+
+    const markAway = () => {
+      onFacingRef.current?.(false);
+      reportLookingAway(true);
     };
 
     const sample = () => {
@@ -184,6 +266,7 @@ export function Gaze({
       let effectivePitchThresholdUp = pitchThresholdUp;
 
       if (pose) {
+        missesRef.current = 0;
         const yawHistory = yawHistoryRef.current;
         const pitchHistory = pitchHistoryRef.current;
         const widthHistory = widthHistoryRef.current;
@@ -227,11 +310,15 @@ export function Gaze({
           Math.abs(smoothedYaw) <= effectiveYawThreshold &&
           Math.abs(smoothedPitch) <= effectivePitchThresholdDown &&
           Math.abs(smoothedPitch) >= effectivePitchThresholdUp;
+      } else if (missesRef.current < MISS_TOLERANCE) {
+        // A short gap — a blink, one bad frame — is not a real "away": hold
+        // the previous reading rather than snapping to not-facing over it.
+        missesRef.current += 1;
+        return;
       } else {
-        // No face, or an unreliable reading — reset smoothing so a
-        // reappearing face isn't averaged against stale history. Leave the
-        // learned reference distance alone; it shouldn't reset just because
-        // you looked away briefly.
+        // No face for a real stretch — reset smoothing so a reappearing face
+        // isn't averaged against stale history. Leave the learned reference
+        // distance alone; it shouldn't reset just because you looked away.
         yawHistoryRef.current = [];
         pitchHistoryRef.current = [];
         widthHistoryRef.current = [];
@@ -244,7 +331,7 @@ export function Gaze({
       }
 
       const awayForMs = Date.now() - lastOnScreenAtRef.current;
-      setLookingAway(awayForMs >= awayThresholdMs);
+      reportLookingAway(awayForMs >= awayThresholdMs);
 
       if (debug) {
         setDebugInfo({
@@ -264,39 +351,56 @@ export function Gaze({
 
     const startSampling = () => {
       stopSampling();
-      interval = setInterval(sample, 200);
+      interval = setInterval(sample, SAMPLE_INTERVAL_MS);
     };
 
     // Background tabs still ran face mesh before this — pause the tracker and
-    // the 200ms sample loop while hidden, and treat the learner as away.
+    // the sample loop while hidden, and treat the learner as away.
     const onVisibility = () => {
       if (document.hidden) {
         stopSampling();
         webgazer.pause();
-        onFacingRef.current?.(false);
-        setLookingAway(true);
-      } else {
+        markAway();
+      } else if (ready) {
         void webgazer.resume().then(() => {
           if (!document.hidden) startSampling();
         });
       }
     };
 
-    if (document.hidden) {
-      webgazer.pause();
-      onFacingRef.current?.(false);
-      setLookingAway(true);
-    } else {
-      startSampling();
-    }
+    trackerUsers += 1;
+    startTracker().then(
+      () => {
+        if (disposed) return;
+        ready = true;
+        if (document.hidden) {
+          webgazer.pause();
+          markAway();
+        } else {
+          startSampling();
+        }
+      },
+      () => {
+        // No camera (permission denied, none attached): WebGazer has already
+        // logged why, and without samples the learner reads as away.
+      },
+    );
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      disposed = true;
       document.removeEventListener("visibilitychange", onVisibility);
       stopSampling();
-      webgazer.end();
+      releaseTracker();
     };
-  }, [awayThresholdMs, yawThreshold, pitchThresholdDown, pitchThresholdUp, debug]);
+  }, [
+    awayThresholdMs,
+    yawThreshold,
+    pitchThresholdDown,
+    pitchThresholdUp,
+    debug,
+    reportLookingAway,
+  ]);
 
   return (
     <div style={{ padding: 16, fontFamily: "monospace" }}>

@@ -1,6 +1,6 @@
-import { useGLTF } from "@react-three/drei";
+import { PerformanceMonitor, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Suspense, useCallback, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { targetSpeed, useWorld } from "@/features/world";
 import { ConductorCameraRig } from "./conductor-camera";
@@ -8,6 +8,8 @@ import {
   CAMERA_FOV,
   CAMERA_LOOK_AT,
   CAMERA_POSITION,
+  DPR_MAX,
+  DPR_MIN,
   SKY_COLOR,
   STATION_DISTANCE,
 } from "./constants";
@@ -21,12 +23,16 @@ import { VoiceListener } from "./voice-listener";
 for (const url of ALL_MODEL_URLS) useGLTF.preload(url);
 
 export function TrainWorld() {
+  const [dpr, setDpr] = useState(DPR_MAX);
+
   return (
     <Canvas
       camera={{ position: CAMERA_POSITION, fov: CAMERA_FOV }}
       onCreated={({ camera }) => camera.lookAt(...CAMERA_LOOK_AT)}
-      dpr={[1, 1.5]}
+      dpr={dpr}
+      gl={{ powerPreference: "high-performance" }}
     >
+      <PerformanceMonitor onDecline={() => setDpr(DPR_MIN)} onIncline={() => setDpr(DPR_MAX)} />
       <VoiceListener />
       <ConductorCameraRig />
       <color attach="background" args={[SKY_COLOR]} />

@@ -44,12 +44,47 @@ export const fixtureRoutePlan: RoutePlan = {
         },
         {
           id: "st-1-q4",
+          type: "mcq",
+          prompt: "What structure encloses the thylakoids and stroma?",
+          choices: ["Cell wall", "Chloroplast", "Mitochondrion", "Nucleus"],
+          correctIndex: 1,
+        },
+        {
+          id: "st-1-q5",
+          type: "multi",
+          prompt: "Select every pigment mentioned as absorbing light for photosynthesis.",
+          choices: ["Chlorophyll a", "Chlorophyll b", "Carotenoids", "Melanin"],
+          correctIndices: [0, 1, 2],
+        },
+        {
+          id: "st-1-q6",
+          type: "multi",
+          prompt: "Select all statements that correctly describe chloroplasts.",
+          choices: [
+            "They contain the thylakoid membranes",
+            "They contain the stroma",
+            "They are found in every plant cell type without exception",
+            "Light absorption happens inside them",
+          ],
+          correctIndices: [0, 1, 3],
+        },
+        {
+          id: "st-1-q7",
           type: "short",
           prompt: "Explain why most leaves appear green.",
           rubric:
             "Full credit: chlorophyll strongly absorbs red and blue light and absorbs little green, so green is reflected or transmitted and reaches the eye. Partial credit: says chlorophyll reflects green without explaining absorption.",
           referenceAnswer:
             "Chlorophyll absorbs mostly red and blue wavelengths and very little green, so green light is reflected or transmitted, and that is what we see.",
+        },
+        {
+          id: "st-1-q8",
+          type: "short",
+          prompt: "Why do plants have accessory pigments in addition to chlorophyll?",
+          rubric:
+            "Full credit: accessory pigments absorb wavelengths chlorophyll absorbs poorly, widening the range of usable light, and can help protect against excess light. Partial credit: only says they absorb other colors of light.",
+          referenceAnswer:
+            "Accessory pigments like carotenoids absorb wavelengths that chlorophyll does not absorb well, which widens the range of light the plant can use and also helps protect it from excess light.",
         },
       ],
     },

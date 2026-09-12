@@ -26,10 +26,11 @@ through `src/features/<feature>/index.ts`.
 | Path | Responsibility |
 |---|---|
 | `src/app.tsx`, `src/routes/` | Dashboard, session, Settings, invite landing page, and redirects from old chat URLs |
-| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. Webcam preview and diagnostics are dev-only |
+| `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Webcam preview and diagnostics are dev-only |
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
-| `src/features/session/` | Drives local efficiency, sends focus to chat, and maps the chat roster to companion trains |
+| `src/features/session/` | Drives local efficiency, banks today's focused time (`focus-time.ts`, score/100 per second, per day in localStorage), sends both to chat, and maps the chat roster to companion trains |
+| `src/features/leaderboard/` | `FocusBoard`, top-left: every rider's avatar ringed by live focus in a per-player colour, and a leaderboard of focused time. Reads the world store only; hidden while the conductor panel is open |
 | `src/features/world/` | Zustand train intent: owners, phases, efficiency, speech, local train ID, and regroup count. No three.js |
 | `src/features/profile/` | Loads/saves the browser's profile, defines the avatar catalog, and renders the Settings picker |
 | `src/features/speech/` | Voice-line registry, phase announcements for the local train (start, break, restart, finish), `sayLine` for events the world does not see, playback/fallback timing, and clearing finished utterances |
@@ -153,8 +154,10 @@ someone else's. The latest `chatMembers.joinedAt` determines the current room.
 HTTP uses `CHAT_USER_HEADER`; the socket passes identity in its query string.
 The server validates events and rate-limits each socket. Messages persist in
 MongoDB; live presence is the set of connected sockets and is not stored.
-Roster entries contain user ID, display name, and 0..1 efficiency. Multiple
-tabs for one user produce one rider; the newest connection's reading wins.
+Roster entries contain user ID, display name, 0..1 efficiency, and the
+focused seconds that user's client has banked today (each client counts its
+own and relays it, so every leaderboard agrees). Multiple tabs for one user
+produce one rider; the newest connection's reading wins.
 
 Presence changes broadcast the roster. Session renders at most four companion
 trains, excluding self, in roster order. Only presence and focus cross this

@@ -1,6 +1,6 @@
-// mcq is graded locally — no LLM call, no ambiguity. Short answer sends
-// only the rubric, the reference answer and the student's text (never the
-// source material) to the flash tier, with the student's text wrapped in
+// mcq and multi are graded locally — no LLM call, no ambiguity. Short answer
+// sends only the rubric, the reference answer and the student's text (never
+// the source material) to the flash tier, with the student's text wrapped in
 // an explicit delimiter and a prompt that tells the model to treat it as
 // data, not instructions — a defense against prompt injection.
 import type { AnswerResult, Question } from "@grugchug/shared";
@@ -8,9 +8,25 @@ import { z } from "zod";
 import { CONFIDENCE_THRESHOLD, defineTool, type ToolSpec } from "../harness";
 
 type McqQuestion = Extract<Question, { type: "mcq" }>;
+type MultiQuestion = Extract<Question, { type: "multi" }>;
 
 export function gradeMcq(question: McqQuestion, choiceIndex: number): AnswerResult {
   const passed = choiceIndex === question.correctIndex;
+  return {
+    questionId: question.id,
+    score: passed ? 1 : 0,
+    passed,
+    feedback: passed ? "Correct." : "Not quite. Review this station and try again.",
+  };
+}
+
+// A "select all that apply" question is right or wrong as a whole — there is
+// no partial credit for a select-all question, same as mcq, since a set that
+// misses one correct choice or includes one wrong one is not the answer.
+export function gradeMulti(question: MultiQuestion, choiceIndices: number[]): AnswerResult {
+  const correct = new Set(question.correctIndices);
+  const chosen = new Set(choiceIndices);
+  const passed = correct.size === chosen.size && [...correct].every((i) => chosen.has(i));
   return {
     questionId: question.id,
     score: passed ? 1 : 0,

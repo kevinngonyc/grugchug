@@ -120,6 +120,12 @@ export const DRIFT_MARKER_EDGE_MARGIN = 0.9;
 export const DRIFT_AHEAD_COLOR = "#15803d"; // pulling away up front
 export const DRIFT_BEHIND_COLOR = "#b45309"; // dropping off the back
 
+// Rendering resolution in device pixels per CSS pixel. Starts sharp; drei's
+// PerformanceMonitor drops it to the floor when the frame rate sags (on a
+// Retina laptop that is over half the pixels) and restores it on recovery.
+export const DPR_MAX = 1.5;
+export const DPR_MIN = 1;
+
 // Camera: moved along the same viewing direction for a closer train view.
 export const CAMERA_POSITION: [number, number, number] = [-1.4, 4.4, -10];
 export const CAMERA_LOOK_AT: [number, number, number] = [-1.4, 1.2, 1];

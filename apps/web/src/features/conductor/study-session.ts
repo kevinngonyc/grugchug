@@ -29,6 +29,7 @@ export type SessionMode =
   | "on-break" // timer running, train stays put
   | "at-station" // train stopped, choose answer / keep studying / break
   | "answering" // showing this station's questions
+  | "passed" // graded, passed, more stations left: showing the result before moving on
   | "complete"; // every station passed
 
 interface StudySessionState {
@@ -49,6 +50,7 @@ interface StudySessionState {
   studyAll: () => Promise<void>;
   startStudying: () => Promise<void>;
   tick: () => void;
+  skipTimer: () => void;
   chooseAnswer: () => void;
   chooseKeepStudying: () => Promise<void>;
   chooseBreak: () => Promise<void>;
@@ -83,7 +85,14 @@ function persist(state: StudySessionState): void {
 function answerGivenText(station: PublicStation, questionId: string, answer: Answer): string {
   if (answer.type === "short") return answer.text;
   const question = station.questions.find((q) => q.id === questionId);
-  return question?.type === "mcq" ? (question.choices[answer.choiceIndex] ?? "") : "";
+  if (answer.type === "mcq") {
+    return question?.type === "mcq" ? (question.choices[answer.choiceIndex] ?? "") : "";
+  }
+  if (question?.type !== "multi") return "";
+  return answer.choiceIndices
+    .map((i) => question.choices[i])
+    .filter((choice): choice is string => choice !== undefined)
+    .join(", ");
 }
 
 export const useStudySession = create<StudySessionState>()((set, get) => ({
@@ -167,6 +176,11 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     const station = currentStation(state);
     if (!state.plan || !station) return;
     set({ busy: true, error: null });
+    // Idempotent when the train is already running (the very first station);
+    // it is what actually departs one left stopped at a station — passing a
+    // station's questions, or picking "keep studying" there, both land here.
+    const id = localTrainId();
+    if (id) useWorld.getState().setPhase(id, "running");
     try {
       const { minutes, message } = await setTimer({
         planId: state.plan.id,
@@ -194,12 +208,30 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     if (state.mode === "counting") {
       const id = localTrainId();
       if (id) useWorld.getState().setPhase(id, "stopped");
-      set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
+      // A fresh arrival, not a return from grading: last station's feedback
+      // and scores no longer describe anything on screen.
+      set({
+        mode: "at-station",
+        timerEndsAt: null,
+        timerMessage: null,
+        stationFeedback: null,
+        results: {},
+      });
       persist(get());
     } else if (state.mode === "on-break") {
       set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
       persist(get());
     }
+  },
+
+  // Dev panel only: end the running countdown now instead of in however many
+  // real minutes the model chose, through the same tick a timer that ran out
+  // takes — so a station and its quiz can be tried without waiting one out.
+  skipTimer: () => {
+    const { mode } = get();
+    if (mode !== "counting" && mode !== "on-break") return;
+    set({ timerEndsAt: Date.now() });
+    get().tick();
   },
 
   chooseAnswer: () => {
@@ -324,10 +356,13 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         return;
       }
 
-      if (id) useWorld.getState().setPhase(id, "running");
-      const nextStation = state.plan.stations[nextIndex];
-      set({ stationIndex: nextIndex, stationFeedback: feedback, busy: false });
-      if (nextStation) await get().startStudying();
+      // Passed, and stations remain: show the result — this station's
+      // per-question scores are still in `results` — rather than racing on
+      // to the next timer before the learner ever sees them. The train stays
+      // stopped; `startStudying` (called once they continue) is what departs
+      // it, same as any other station-to-station move.
+      set({ stationIndex: nextIndex, mode: "passed", stationFeedback: feedback, busy: false });
+      persist(get());
     } catch {
       set({ busy: false, error: "Could not check your answers. Try again." });
     }

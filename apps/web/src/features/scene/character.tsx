@@ -103,8 +103,10 @@ export function Character({
           </mesh>
         </Billboard>
         {speech ? <SpeechBubble key={speech.id} text={speech.text} /> : null}
-        {showTimer ? <StationTimerLabel /> : null}
       </group>
+      {/* Outside the bob: an <Html> label under a group that moves every frame
+          is re-projected and re-positioned in the DOM every frame too. */}
+      {showTimer ? <StationTimerLabel /> : null}
     </group>
   );
 }

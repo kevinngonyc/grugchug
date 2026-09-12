@@ -13,7 +13,7 @@ export function SessionControls() {
   const canBreak = plan !== null && mode === "at-station";
 
   return (
-    <div className="flex shrink-0 gap-2 rounded-2xl border border-border/40 bg-background/55 p-3 shadow-xl backdrop-blur-md">
+    <div className="flex shrink-0 gap-2 rounded-2xl border border-border/40 bg-background/90 p-3 shadow-xl">
       <button
         type="button"
         className={secondaryButtonClass}
