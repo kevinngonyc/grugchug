@@ -7,7 +7,7 @@
 // keeps the conductor sprite visible in the gap between the two), the
 // study-plan / station panel on the right, and a small break/quit control
 // strip below it. The study session's state (plan, timer, station, answers)
-// lives in study-session.ts, not here — this just hydrates it once and runs
+// lives in study-session.ts, not here — this closes stale run history once and runs
 // its one-second tick.
 import { useEffect } from "react";
 import { AskPanel } from "./ask-panel";

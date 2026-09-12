@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { GeminiProvider } from "./gemini";
 import { GroqProvider } from "./groq";
-import { getProvider } from "./index";
+import { describeLlmConfig, getProvider } from "./index";
 
 const keys = [
   "LLM_PROVIDER",
@@ -53,5 +53,31 @@ describe("getProvider", () => {
     delete process.env.GEMINI_FLASH_MODEL;
 
     expect(() => getProvider("flash")).toThrow(/GEMINI_FLASH_MODEL/);
+  });
+});
+
+describe("describeLlmConfig", () => {
+  test("names the vendor and models, and the key only by length", () => {
+    const line = describeLlmConfig({
+      LLM_PROVIDER: "groq",
+      GROQ_API_KEY: "secret-key-123",
+      GROQ_FLASH_MODEL: "flash-m",
+      GROQ_PRO_MODEL: "pro-m",
+    });
+    expect(line).toBe("conductor LLM: groq · flash=flash-m · pro=pro-m · GROQ_API_KEY length 14");
+    expect(line).not.toContain("secret-key-123");
+  });
+
+  test("calls out an unset provider and anything missing", () => {
+    const line = describeLlmConfig({ GROQ_API_KEY: "k", GEMINI_FLASH_MODEL: "f" });
+    expect(line).toContain("gemini (LLM_PROVIDER unset, defaulting to gemini)");
+    expect(line).toContain("pro=(missing)");
+    expect(line).toContain("GEMINI_API_KEY (missing)");
+  });
+
+  test("calls out an LLM_PROVIDER it does not recognise", () => {
+    expect(describeLlmConfig({ LLM_PROVIDER: "Groq " })).toContain(
+      'LLM_PROVIDER="Groq" not recognised',
+    );
   });
 });

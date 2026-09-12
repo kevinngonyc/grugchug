@@ -2,11 +2,12 @@
 // grade answers, and field questions mid-study.
 //
 // createPlan runs two phases: plan-route breaks the material into stations,
-// then generate-questions runs per station in parallel. Neither tool ever
-// throws (the harness degrades to its own fixture internally); a station
-// whose generation call still fails outright falls back to fixture
-// questions here, so one bad station never fails the whole route. The
-// assembled plan is persisted, and every other endpoint reads it back.
+// then generate-questions runs per station in parallel. Neither tool throws —
+// the harness degrades to its own fixture — but a fixture is sample content
+// about photosynthesis, never the learner's material. So if either phase fell
+// back, the request fails with 503 and the reason ("GROQ_FLASH_MODEL is not
+// set") instead of saving a route that only looks real. The assembled plan is
+// persisted, and every other endpoint reads it back.
 //
 // Each handler takes its real dependencies (tool runners, store functions)
 // as a defaulted parameter, so tests can inject fakes and stay offline —
@@ -22,15 +23,20 @@ import {
   evaluateProgressRequestSchema,
   evaluateProgressResponseSchema,
   type Material,
+  PASS_THRESHOLD,
   publicRoutePlanSchema,
-  type Question,
   type RoutePlan,
   type Station,
   setTimerRequestSchema,
   setTimerResponseSchema,
 } from "@grugchug/shared";
-import { fixtureRoutePlan } from "../conductor/fixtures";
-import { getRoutePlanById, saveRoutePlan } from "../conductor/store";
+import { fallbackReason } from "../conductor/harness";
+import {
+  getPlanMaterials,
+  getRoutePlanById,
+  savePlanMaterials,
+  saveRoutePlan,
+} from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
 import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
 import { generateQuestionsTool } from "../conductor/tools/generate-questions";
@@ -59,45 +65,49 @@ function materialHash(materials: readonly Material[]): string {
   return hasher.digest("hex");
 }
 
-// Used only when generate-questions fails outright for a station (the
-// harness's own fixture fallback means this is a last resort). The
-// station's real id/title/scope from plan-route are kept; only the
-// questions are generic filler.
-function fixtureQuestionsFor(index: number): Question[] {
-  const station = fixtureRoutePlan.stations[index % fixtureRoutePlan.stations.length];
-  if (!station) throw new Error("fixtureRoutePlan has no stations");
-  return station.questions;
+function unavailable(reason: string): Response {
+  return Response.json({ error: `AI provider unavailable: ${reason}` }, { status: 503 });
 }
 
 export interface CreatePlanDeps {
   runPlanRoute: typeof planRouteTool.run;
   runGenerateQuestions: typeof generateQuestionsTool.run;
-  save: typeof saveRoutePlan;
+  save(plan: RoutePlan, materials: readonly Material[]): Promise<void>;
 }
 
 const defaultCreatePlanDeps: CreatePlanDeps = {
   runPlanRoute: planRouteTool.run,
   runGenerateQuestions: generateQuestionsTool.run,
-  save: saveRoutePlan,
+  // The plan, and the files it came from for the TA to answer from later.
+  save: async (plan, materials) => {
+    await saveRoutePlan(plan);
+    await savePlanMaterials(plan.id, materials);
+  },
 };
+
+type BuiltStation = { ok: true; station: Station } | { ok: false; reason: string };
 
 async function buildStation(
   skeleton: StationSkeleton,
   materials: readonly Material[],
-  index: number,
   runGenerateQuestions: CreatePlanDeps["runGenerateQuestions"],
-): Promise<Station> {
+): Promise<BuiltStation> {
   try {
     const result = await runGenerateQuestions({ scope: skeleton.scope, materials: [...materials] });
+    const reason = fallbackReason(result);
+    if (reason) return { ok: false, reason };
     return {
-      ...skeleton,
-      questions: result.output.questions.map((q, qi) => ({
-        ...q,
-        id: `${skeleton.id}-q${qi + 1}`,
-      })),
+      ok: true,
+      station: {
+        ...skeleton,
+        questions: result.output.questions.map((q, qi) => ({
+          ...q,
+          id: `${skeleton.id}-q${qi + 1}`,
+        })),
+      },
     };
-  } catch {
-    return { ...skeleton, questions: fixtureQuestionsFor(index) };
+  } catch (error) {
+    return { ok: false, reason: describeError(error) };
   }
 }
 
@@ -110,12 +120,20 @@ export async function createPlanWithDeps(req: Request, deps: CreatePlanDeps): Pr
   const { userId, availableMinutes, materials } = body.data;
 
   const planResult = await deps.runPlanRoute({ materials, availableMinutes });
-  const stations = await Promise.all(
-    planResult.output.stations.map((skeleton, i) =>
-      buildStation(skeleton, materials, i, deps.runGenerateQuestions),
+  const routeFailure = fallbackReason(planResult);
+  if (routeFailure) return unavailable(routeFailure);
+
+  const builtStations = await Promise.all(
+    planResult.output.stations.map((skeleton) =>
+      buildStation(skeleton, materials, deps.runGenerateQuestions),
     ),
   );
 
+  const stations: Station[] = [];
+  for (const built of builtStations) {
+    if (!built.ok) return unavailable(built.reason);
+    stations.push(built.station);
+  }
   const plan: RoutePlan = {
     id: crypto.randomUUID(),
     userId,
@@ -125,7 +143,7 @@ export async function createPlanWithDeps(req: Request, deps: CreatePlanDeps): Pr
   };
 
   try {
-    await deps.save(plan);
+    await deps.save(plan, materials);
   } catch (error) {
     return Response.json(
       { error: `failed to save route plan: ${describeError(error)}` },
@@ -234,11 +252,13 @@ export function answerStation(req: WithParams<"stationId">): Promise<Response> {
 }
 
 export interface AskConductorDeps extends PlanLookupDeps {
+  getMaterials: typeof getPlanMaterials;
   runAsk: typeof askConductorTool.run;
 }
 
 const defaultAskConductorDeps: AskConductorDeps = {
   get: getRoutePlanById,
+  getMaterials: getPlanMaterials,
   runAsk: askConductorTool.run,
 };
 
@@ -248,15 +268,23 @@ export async function askConductorWithDeps(
 ): Promise<Response> {
   const body = await readBody(req, askRequestSchema);
   if (!body.ok) return body.response;
-  const { planId, stationId, question } = body.data;
+  const { planId, stationId, question, history } = body.data;
 
   const found = await loadPlan(planId, deps.get);
   if (!found.ok) return found.response;
 
   const station = stationId ? found.plan.stations.find((s) => s.id === stationId) : undefined;
   const scope = station?.scope ?? found.plan.stations.map((s) => s.scope).join("\n");
+  // A plan built before materials were stored has none; the TA answers from
+  // the scope, as it always did.
+  const materials = await deps.getMaterials(planId).catch(() => null);
 
-  const result = await deps.runAsk({ scope, question });
+  const result = await deps.runAsk({
+    scope,
+    question,
+    history: history ?? [],
+    materials: materials ?? undefined,
+  });
   return Response.json(askResponseSchema.parse(result.output));
 }
 
@@ -323,8 +351,16 @@ export async function evaluateProgressWithDeps(
     );
   }
 
-  const result = await deps.runEvaluate({ scope: station.scope, results });
-  return Response.json(evaluateProgressResponseSchema.parse(result.output));
+  // The verdict is the score, not the model's opinion: the same mean the web
+  // shows as "overall", against the same threshold. The epsilon keeps a mean
+  // that is 0.7 up to float rounding on the passing side.
+  const meanScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+  const passed = meanScore + 1e-9 >= PASS_THRESHOLD;
+
+  const result = await deps.runEvaluate({ scope: station.scope, results, passed, meanScore });
+  return Response.json(
+    evaluateProgressResponseSchema.parse({ passed, feedback: result.output.feedback }),
+  );
 }
 
 // POST /api/conductor/stations/:stationId/evaluate

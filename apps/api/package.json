@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
+    "dev": "bun --env-file=../../.env --env-file=../.env --env-file=.env --watch src/index.ts",
     "build": "bun build src/index.ts --target bun --outdir dist",
-    "start": "bun dist/index.js",
+    "start": "bun --env-file=../../.env --env-file=../.env --env-file=.env dist/index.js",
     "test": "bun test",
+    "check:llm": "bun --env-file=../../.env --env-file=../.env --env-file=.env scripts/check-llm.ts",
     "typecheck": "tsc -p ."
   },
   "dependencies": {

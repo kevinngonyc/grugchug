@@ -86,6 +86,8 @@ export const routePlanSchema = z.object({
   id: z.string(),
   userId: z.string(),
   materialHash: z.string(),
+  // Sample content was used because a generation step failed. Absent on old plans.
+  usedFallback: z.boolean().optional(),
   totalEstimatedMinutes: z.number().positive(),
   stations: z.array(stationSchema).min(1).max(MAX_STATIONS),
 });
@@ -153,11 +155,25 @@ export const answerResultSchema = z.object({
 
 export type AnswerResult = z.infer<typeof answerResultSchema>;
 
+// One earlier exchange in the ask panel, sent back with the next question so
+// a follow-up ("and the second one?") has something to refer to.
+export const askTurnSchema = z.object({
+  question: z.string().min(1).max(2000),
+  answer: z.string().max(8000),
+});
+
+export type AskTurn = z.infer<typeof askTurnSchema>;
+
+// How many earlier exchanges the TA sees: enough for a follow-up, not a
+// whole session's worth of tokens on every question.
+export const MAX_ASK_HISTORY = 6;
+
 // Body of POST /api/conductor/ask: a question asked mid-study.
 export const askRequestSchema = z.object({
   planId: z.string().min(1),
   stationId: z.string().min(1).optional(),
   question: z.string().min(1).max(2000),
+  history: z.array(askTurnSchema).max(MAX_ASK_HISTORY).optional(),
 });
 
 export type AskRequest = z.infer<typeof askRequestSchema>;
@@ -215,6 +231,11 @@ export const evaluateProgressRequestSchema = z.object({
 });
 
 export type EvaluateProgressRequest = z.infer<typeof evaluateProgressRequestSchema>;
+
+// A station is passed when the mean of its questions' scores reaches this.
+// The API decides with it and the web labels the overall score with it, so
+// the verdict and the score on screen can never disagree.
+export const PASS_THRESHOLD = 0.7;
 
 // Reply to POST /api/conductor/stations/:stationId/evaluate: can the learner
 // move on to the next station?

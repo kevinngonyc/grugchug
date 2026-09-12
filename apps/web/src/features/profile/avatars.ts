@@ -14,6 +14,8 @@ const NAMES: Record<AvatarId, string> = {
   poku: "Poku",
   cat: "Cat",
   doug: "Doug",
+  bbob: "Bbob",
+  bilby: "Bilby",
 };
 
 export function avatarUrl(id: AvatarId): string {

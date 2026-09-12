@@ -4,9 +4,8 @@
 // and for what the conductor says (features/speech); efficiency-driven speed
 // is the only thing exclusively owned by features/session.
 //
-// The plan itself is never persisted — only enough to resume is kept in
-// localStorage (see session-storage.ts), and the plan is refetched by id on
-// load, so a stale copy can never be shown.
+// Refresh starts a fresh sitting. Saved metadata is only used to close the
+// previous history record; it never restores a route or timer automatically.
 import type {
   Answer,
   AnswerResult,
@@ -53,10 +52,15 @@ interface StudySessionState {
   error: string | null;
   historyId: string | null;
   departed: boolean;
+  /**
+   * Study time left when a break was taken mid-stretch; the stretch resumes
+   * with this much once the break ends. Null for a break taken at a station.
+   */
+  pausedStudyMs: number | null;
 
   hydrate: () => Promise<void>;
   startSession: (plan: PublicRoutePlan) => void;
-  studyAll: () => Promise<void>;
+  studyAll: (regenerate?: boolean) => Promise<void>;
   startStudying: () => Promise<void>;
   tick: () => void;
   skipTimer: () => void;
@@ -102,6 +106,9 @@ function answerGivenText(station: PublicStation, questionId: string, answer: Ans
     .join(", ");
 }
 
+// Invalidates outstanding API work when a run ends or a new route starts.
+let sessionRevision = 0;
+
 export const useStudySession = create<StudySessionState>()((set, get) => ({
   plan: null,
   stationIndex: 0,
@@ -116,29 +123,20 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   error: null,
   historyId: null,
   departed: false,
+  pausedStudyMs: null,
 
   hydrate: async () => {
+    if (get().plan) return; // A route remount in the same page keeps the live run.
     const saved = readSession();
-    if (!saved) return;
-    try {
-      const plan = await getPlan(saved.planId);
-      set({
-        plan,
-        stationIndex: saved.stationIndex,
-        mode: saved.mode,
-        timerEndsAt: saved.timerEndsAt,
-        timerMessage: saved.timerMessage,
-        lastStretchMinutes: saved.lastStretchMinutes,
-        historyId: saved.historyId,
-        departed: saved.departed,
-      });
-    } catch {
-      // The plan is gone or unreachable: behave like there is nothing to resume.
-      clearSession();
+    clearSession(); // Clear before awaiting, including StrictMode's second effect.
+    if (saved?.historyId && saved.mode !== "complete") {
+      await endHistory(saved.historyId, "quit").catch(() => undefined);
     }
   },
 
   startSession: (plan) => {
+    sessionRevision++;
+    useEfficiency.getState().drop(QUIZ_SOURCE);
     set({
       plan,
       stationIndex: 0,
@@ -153,6 +151,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       error: null,
       historyId: null,
       departed: false,
+      pausedStudyMs: null,
     });
     persist(get());
   },
@@ -161,30 +160,44 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   // exact set is refetched by id rather than regenerated (never trusted
   // stale); if it is gone — expired, deleted server-side — fall back to
   // generating instead of showing an error the learner can't act on.
-  studyAll: async () => {
+  studyAll: async (regenerate = false) => {
+    const revision = sessionRevision;
     const library = useMaterialLibrary.getState();
-    if (library.items.length === 0) return;
+    if (library.items.length === 0 || get().busy) return;
 
     set({ busy: true, error: null });
     try {
       let plan: PublicRoutePlan | null = null;
-      if (library.planId) {
+      if (library.planId && !regenerate) {
         plan = await getPlan(library.planId).catch(() => null);
       }
-      if (!plan) {
+      if (revision !== sessionRevision) return;
+      if (!plan || plan.usedFallback) {
         plan = await createPlan({
           userId: getUserId(),
           materials: library.items.map((item) => item.material),
         });
-        useMaterialLibrary.getState().setPlanId(plan.id);
+        if (revision !== sessionRevision) return;
+        useMaterialLibrary.getState().setPlanId(plan.usedFallback ? null : plan.id);
       }
       get().startSession(plan);
-    } catch {
-      set({ busy: false, error: "Could not build a route from your materials. Try again." });
+    } catch (error) {
+      if (revision !== sessionRevision) return;
+      // The API says why ("AI provider unavailable: GROQ_FLASH_MODEL is not
+      // set"); a network failure has nothing better than the generic line.
+      // Matched by name, not instanceof, so this module needs only ./api's
+      // functions.
+      const reason =
+        error instanceof Error && error.name === "ConductorApiError" ? error.message : null;
+      set({
+        busy: false,
+        error: reason ?? "Could not build a route from your materials. Try again.",
+      });
     }
   },
 
   startStudying: async () => {
+    const revision = sessionRevision;
     const state = get();
     const station = currentStation(state);
     if (!state.plan || !station) return;
@@ -195,6 +208,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         stationId: station.id,
         reason: "study",
       });
+      if (revision !== sessionRevision) return;
       // `departed` is persisted immediately, in the same set as the mode
       // change, rather than after the history POST below: a reload during
       // that POST must not find `departed: false` and replay the
@@ -224,10 +238,15 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
           planId: state.plan.id,
           stationTotal: state.plan.stations.length,
         });
+        if (revision !== sessionRevision) {
+          await endHistory(historyId, "quit").catch(() => undefined);
+          return;
+        }
         set({ historyId });
         persist(get());
       }
     } catch {
+      if (revision !== sessionRevision) return;
       set({ busy: false, error: "Could not start the timer. Try again." });
     }
   },
@@ -250,8 +269,20 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       });
       persist(get());
     } else if (state.mode === "on-break") {
-      sayText("Break's over.");
-      set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
+      // A break taken mid-stretch picks the stretch up where it stopped; one
+      // taken at a station returns to the station.
+      if (state.pausedStudyMs !== null) {
+        sayLine("restartStudy");
+        set({
+          mode: "counting",
+          timerEndsAt: Date.now() + state.pausedStudyMs,
+          timerMessage: "Break's over — back to studying.",
+          pausedStudyMs: null,
+        });
+      } else {
+        sayText("Break's over.");
+        set({ mode: "at-station", timerEndsAt: null, timerMessage: null });
+      }
       persist(get());
     }
   },
@@ -272,6 +303,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   },
 
   chooseKeepStudying: async () => {
+    const revision = sessionRevision;
     const state = get();
     const station = currentStation(state);
     if (!state.plan || !station) return;
@@ -282,6 +314,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         stationId: station.id,
         reason: "keep-studying",
       });
+      if (revision !== sessionRevision) return;
       set({
         mode: "counting",
         timerEndsAt: Date.now() + minutes * 60_000,
@@ -293,29 +326,42 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       persist(get());
       useConductorUi.getState().closePanel();
     } catch {
+      if (revision !== sessionRevision) return;
       set({ busy: false, error: "Could not restart the timer. Try again." });
     }
   },
 
   chooseBreak: async () => {
+    const revision = sessionRevision;
     const state = get();
-    if (!state.plan) return;
+    if (!state.plan || state.busy) return;
     set({ busy: true, error: null });
+    // Respond within the click gesture, before the model chooses a duration.
+    sayLine("takeBreak");
     try {
       const { minutes, message } = await setTimer({
         planId: state.plan.id,
         reason: "break",
         previousMinutes: state.lastStretchMinutes ?? undefined,
       });
+      if (revision !== sessionRevision) return;
+      // Measured when the break actually starts, not at the click: the study
+      // timer kept running while the model chose a length.
+      const current = get();
+      const pausedStudyMs =
+        current.mode === "counting" && current.timerEndsAt !== null
+          ? Math.max(0, current.timerEndsAt - Date.now())
+          : null;
       set({
         mode: "on-break",
         timerEndsAt: Date.now() + minutes * 60_000,
         timerMessage: message,
         busy: false,
+        pausedStudyMs,
       });
-      sayLine("takeBreak");
       persist(get());
     } catch {
+      if (revision !== sessionRevision) return;
       set({ busy: false, error: "Could not start a break. Try again." });
     }
   },
@@ -325,6 +371,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   },
 
   submitAllAndFinish: async () => {
+    const revision = sessionRevision;
     const state = get();
     const station = currentStation(state);
     if (!state.plan || !station) return;
@@ -348,9 +395,11 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
           return [q.id, result] as const;
         }),
       );
+      if (revision !== sessionRevision) return;
       results = Object.fromEntries(graded);
       set({ results });
     } catch {
+      if (revision !== sessionRevision) return;
       set({ busy: false, error: "Could not submit your answers. Try again." });
       return;
     }
@@ -380,6 +429,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         planId,
         results: progress,
       });
+
+      if (revision !== sessionRevision) return;
 
       // Fire and forget: a hung API must never delay the verdict on screen.
       recordHistory(state.historyId, {
@@ -414,12 +465,17 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       set({ stationIndex: nextIndex, mode: "passed", stationFeedback: feedback, busy: false });
       persist(get());
     } catch {
+      if (revision !== sessionRevision) return;
       set({ busy: false, error: "Could not check your answers. Try again." });
     }
   },
 
   quit: () => {
-    const { historyId, mode } = get();
+    const { historyId, mode, plan } = get();
+    sessionRevision++;
+    if (plan && mode !== "complete") sayLine("greatSession");
+    useConductorUi.getState().closePanel();
+    useEfficiency.getState().drop(QUIZ_SOURCE);
     if (mode !== "complete") {
       // Fire and forget: quitting must be instant even with the API down.
       endHistory(historyId, "quit").catch(() => undefined);
@@ -439,6 +495,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       error: null,
       historyId: null,
       departed: false,
+      pausedStudyMs: null,
     });
   },
 }));

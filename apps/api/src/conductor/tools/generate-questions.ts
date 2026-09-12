@@ -34,10 +34,16 @@ export const generateQuestionsToolSpec: ToolSpec<GenerateQuestionsInput, Generat
     inputSchema: generateQuestionsInputSchema,
     outputSchema: generateQuestionsOutputSchema,
     confidenceThreshold: CONFIDENCE_THRESHOLD,
+    system:
+      "You are a university professor writing a fair exam on one section of your course. Your questions test understanding of the attached material, not trivia or trick wording. Every correct answer is supported by the material, and every wrong choice is plausible yet clearly wrong to someone who studied it. Short-answer rubrics are explicit enough for a grader who never sees the material. Respond with JSON only.",
+    temperature: 0.7,
+    // Material first: every station of a route sends the same files, so the
+    // parallel per-station calls share one long prefix a provider can cache.
     prompt: (input) => [
+      ...materialParts(input.materials),
       {
         kind: "text",
-        text: `You are writing quiz questions for one station of a study route. This station's scope: "${input.scope}"
+        text: `Write the quiz for one station of the study route. This station's scope: "${input.scope}"
 Using only the attached material, write exactly 8 questions covering this scope, in three different styles so the quiz isn't monotonous: 4 single-choice, 2 select-all-that-apply, and 2 short-answer.
 Respond with JSON only, matching exactly this shape:
 {"confidence": number (0 to 1, how sure you are these questions are well-grounded in the attached material),
@@ -52,7 +58,6 @@ Respond with JSON only, matching exactly this shape:
 Order does not matter, but the list must contain exactly 4 "mcq" entries, exactly 2 "multi" entries, and exactly 2 "short" entries.
 confidence is for the conductor's internal quality check only; still include it.`,
       },
-      ...materialParts(input.materials),
     ],
     fixture: () => {
       const station = fixtureRoutePlan.stations[0];

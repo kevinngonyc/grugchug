@@ -2,12 +2,13 @@
 // it produces — start the timer, arrive at a station, answer or keep
 // studying, and repeat. All state lives in study-session.ts; this only
 // renders whichever view its current mode calls for.
-import type {
-  Answer,
-  AnswerResult,
-  PublicQuestion,
-  PublicRoutePlan,
-  PublicStation,
+import {
+  type Answer,
+  type AnswerResult,
+  PASS_THRESHOLD,
+  type PublicQuestion,
+  type PublicRoutePlan,
+  type PublicStation,
 } from "@grugchug/shared";
 import { Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -141,6 +142,12 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
           </li>
         ))}
       </ol>
+      {plan.usedFallback && (
+        <p role="alert" className="text-sm text-destructive">
+          Some content is a sample because generation failed. Regenerate the route to try your
+          materials again.
+        </p>
+      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <button
         type="button"
@@ -149,6 +156,14 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
         onClick={() => useStudySession.getState().startStudying()}
       >
         {busy ? "Starting…" : "Start studying"}
+      </button>
+      <button
+        type="button"
+        className={secondaryButtonClass}
+        disabled={busy}
+        onClick={() => void useStudySession.getState().studyAll(true)}
+      >
+        Regenerate route
       </button>
       <button
         type="button"
@@ -201,7 +216,8 @@ function overallScore(results: Record<string, AnswerResult>): number {
 }
 
 // The headline the learner actually asked for: did I pass, and what was my
-// overall score — separate from, and above, the per-question breakdown.
+// overall score — separate from, and above, the per-question breakdown. The
+// API passes a station at PASS_THRESHOLD of this same mean, so the two agree.
 function ResultBanner({
   passed,
   results,
@@ -216,7 +232,7 @@ function ResultBanner({
       }`}
     >
       {passed ? "✓ Passed" : "✗ Not passed yet"} — {Math.round(overallScore(results) * 100)}%
-      overall
+      overall (pass mark {Math.round(PASS_THRESHOLD * 100)}%)
     </div>
   );
 }

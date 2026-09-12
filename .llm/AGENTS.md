@@ -22,7 +22,8 @@ boundaries. Read it before adding code.
 - `docs/specs/` — design docs, named `YYYY-MM-DD-<topic>-design.md`.
 - `docs/plans/` — implementation plans.
 - `scripts/` — dev helpers.
-- `.env.example` — copy to `apps/api/.env`. `SQLITE_PATH` overrides the
+- `.env.example` — copy to `apps/.env`. API dev/start also load root `.env`
+  and `apps/api/.env` (later files override earlier ones); restart after edits. `SQLITE_PATH` overrides the
   database location; the default is `apps/api/data/grugchug.sqlite`.
 
 ## Commands
@@ -87,6 +88,12 @@ All from the repo root.
   `features/leaderboard` reads the world store only; it never recomputes focus
   or accumulates time. Presence focus updates must retain avatar/journey,
   and journey updates must retain banked focus time.
+- Refresh starts a fresh study session while keeping profile, materials, and
+  history. Saved run metadata closes the previous history record; never
+  restore its route or timer automatically. Ignore pending API results after
+  quitting or starting another run.
+- Break narration starts on the click before the timer API responds; quitting
+  an active run plays `greatSession`. Audio unlocks on the first user gesture.
 - The study session's `passed` mode keeps the train stopped and displays quiz
   feedback until the learner continues. Its station index already points to
   the next station; presence must report the previous stop while reviewing.
@@ -125,11 +132,18 @@ All from the repo root.
   `sayText(text)` call for a line with no recording. A committed recording
   alone does not play automatically. Use accurate captions when transcripts
   are available; existing registry captions are placeholders.
+- Route plans carry `usedFallback` when sample content was used. Show that
+  status in the route summary and do not remember sample plans for reuse.
+  Regenerate route bypasses a saved plan without deleting uploaded materials.
 - Conductor API tools use `conductor/harness.ts` and `provider/index.ts` for
-  validation, retries, provider/model selection, and fixture fallback. Keep
-  model names in environment configuration and dependencies injectable so
-  tests never call LLMs or touch a real database. Public responses must strip
-  answer keys.
+  validation, retries, provider/model selection, and fixture fallback. Each
+  tool declares its persona in `system`, never in the user prompt. A fixture
+  must never be saved or shown as the learner's content: createPlan returns
+  503 with `fallbackReason` instead. Keep model names in environment
+  configuration and dependencies injectable so tests never call LLMs or touch
+  a real database. Public responses must strip answer keys.
+- A station's verdict is `mean score >= PASS_THRESHOLD`, decided in the API;
+  the LLM writes feedback for it, never the verdict itself.
 - Reuse `apps/api/src/routes/http.ts` for caller IDs, JSON/schema validation,
   and problem responses; preserve each route's existing error format.
 - Study-history requests send the browser ID in `CHAT_USER_HEADER`. Require

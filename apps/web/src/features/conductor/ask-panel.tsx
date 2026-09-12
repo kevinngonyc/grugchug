@@ -1,8 +1,8 @@
-// A general Q&A chat about the current study material. Passes the current
-// station once a session is underway so the model answers against that
-// station's scope; before studying starts, the server falls back to every
-// station combined.
-import type { PublicRoutePlan } from "@grugchug/shared";
+// A general Q&A chat with the course TA about the current study material.
+// Passes the current station once a session is underway so the answer
+// focuses there (before studying starts, every station combined), plus the
+// last few answered exchanges so a follow-up question makes sense.
+import { MAX_ASK_HISTORY, type PublicRoutePlan } from "@grugchug/shared";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { askConductor, ConductorApiError } from "./api";
 import { useMaterialLibrary } from "./material-library";
@@ -101,6 +101,11 @@ export function AskPanel({ plan }: AskPanelProps) {
       if (!trimmed || !plan) return;
 
       const id = crypto.randomUUID();
+      const history = entries
+        .flatMap((entry) =>
+          entry.answer === null ? [] : [{ question: entry.question, answer: entry.answer }],
+        )
+        .slice(-MAX_ASK_HISTORY);
       setError(null);
       setAsking(true);
       setQuestion("");
@@ -110,6 +115,7 @@ export function AskPanel({ plan }: AskPanelProps) {
           planId: plan.id,
           question: trimmed,
           stationId: askStationId(plan, stationIndex, mode),
+          history,
         });
         setEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, answer } : entry)));
       } catch (err) {
@@ -119,7 +125,7 @@ export function AskPanel({ plan }: AskPanelProps) {
         setAsking(false);
       }
     },
-    [plan, question, stationIndex, mode],
+    [plan, question, stationIndex, mode, entries],
   );
 
   return (

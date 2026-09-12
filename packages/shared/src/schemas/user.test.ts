@@ -36,5 +36,13 @@ describe("userProfileSchema", () => {
 });
 
 test("avatarIdSchema lists every drawing in public/characters", () => {
-  expect(avatarIdSchema.options).toEqual(["conductor", "bonbon", "poku", "cat", "doug"]);
+  expect(avatarIdSchema.options).toEqual([
+    "conductor",
+    "bonbon",
+    "poku",
+    "cat",
+    "doug",
+    "bbob",
+    "bilby",
+  ]);
 });

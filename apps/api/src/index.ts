@@ -2,6 +2,7 @@
 // now, and Express/Hono/Elysia can be mounted here later if the app outgrows it.
 
 import { chatWebSocket } from "./chat/hub";
+import { describeLlmConfig } from "./conductor/provider";
 import { getDatabase } from "./db";
 import { chatSocketRoute, joinRoomRoute, listMessagesRoute, myRoomRoute } from "./routes/chat";
 import {
@@ -54,3 +55,4 @@ const server = Bun.serve({
 });
 
 console.log(`api listening on http://localhost:${server.port}`);
+console.log(describeLlmConfig());

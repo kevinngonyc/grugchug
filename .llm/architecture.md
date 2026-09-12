@@ -13,7 +13,9 @@ The web app is Vite + React + TypeScript. The API uses framework-free
 `Bun.serve` routes and Bun's built-in `bun:sqlite`, one local database file
 with no separate service to run. Vite proxies HTTP and WebSocket traffic
 under `/api` to port 3000; the frontend normally runs on 5173. Configure the
-API through `apps/api/.env` using `.env.example`.
+API through `apps/.env` using `.env.example`. API dev/start explicitly load
+root `.env`, `apps/.env`, then `apps/api/.env`; later files override earlier
+ones. Restart after changes. Environment settings are server-side.
 
 The current session runs the train scene, webcam attention tracking, profile
 selection, room chat, and the study loop end to end: uploading material,
@@ -103,7 +105,7 @@ profile before changing the passenger and broadcasting presence. Failed saves
 keep the previous avatar and offer a retry. The scene only requests the UI;
 profile owns saving and the session route applies the saved owner.
 
-The selectable avatars are Conductor, Bonbon, Poku, Cat, and Doug. They are
+The selectable avatars are Conductor, Bonbon, Poku, Cat, Doug, Bbob, and Bilby. They are
 passengers on the carriage. Every locomotive separately uses the fixed
 `conductor.png` as the speaking agent. Images share a 500x500 transparent
 canvas and a common plane size; the visible drawing determines world size.
@@ -158,13 +160,13 @@ replaced, or its train disappears; the context closes on session unmount.
 The study session narrates its own moments, not a phase watcher: it calls
 `sayLine` for `startSession` (a fresh route), `restartStudy` (resuming after
 a break or a passed station), `takeBreak`, `passQuiz`, and `greatSession`
-(the route's terminus), and `sayText` for lines with no recording, such as
+(the route's terminus or quitting an active session), and `sayText` for lines with no recording, such as
 naming the next station or announcing a break's end. `/session?dev` exposes
 `chatter`, which steps the local conductor through the registered voice
 lines one click at a time and gives friends canned text, so every clip can
 be heard without a real break or finish. Text-only, failed, or
-autoplay-blocked clips use a text-duration fallback. A gesture can unlock
-audio for subsequent playback.
+autoplay-blocked clips use a text-duration fallback. The first gesture creates and unlocks the audio context before asynchronous
+timer responses. Break narration starts immediately on the click.
 
 All five recordings are committed and registered: `startSession`,
 `takeBreak`, `restartStudy`, `greatSession`, and `passQuiz`, each triggered
@@ -214,12 +216,13 @@ Paths below are relative to `apps/api/`.
 | `src/chat/store.ts` | SQLite `chat_rooms`, `chat_members`, and `chat_messages` tables |
 | `src/chat/hub.ts` | Per-room socket topics, message/focus/rename/journey events, and in-memory presence |
 | `src/chat/rate-limit.ts`, `src/chat/errors.ts` | Per-connection throttling and request failure reporting |
-| `src/routes/conductor.ts` | Plan creation/retrieval, answer grading, and questions |
-| `src/conductor/tools/` | Plan stations, generate questions, grade answers, and answer study questions |
-| `src/conductor/harness.ts` | Validated tool execution, content-hash cache, timeouts, retries, confidence checks, traces, and fixtures |
-| `src/conductor/provider/` | Gemini/Groq adapters and central vendor/model selection |
-| `src/conductor/pdf.ts`, `src/conductor/material-parts.ts` | Material conversion; local PDF text extraction for Groq |
-| `src/conductor/store.ts` | SQLite `route_plans` persistence with schema validation on read |
+| `src/routes/conductor.ts` | Plan creation/retrieval, answer grading, station verdicts (mean score ≥ `PASS_THRESHOLD`), TA questions, and timers |
+| `src/conductor/tools/` | One persona each, sent as a system instruction: curriculum designer (plan-route), professor (generate-questions, evaluate-progress feedback), grader (grade-answer), teaching assistant (ask-conductor), study coach (set-timer) |
+| `src/conductor/harness.ts` | Validated tool execution with system prompt and temperature, bounded content-hash cache, timeouts, retries, confidence checks, traces, failure logging, fixtures, and `fallbackReason` |
+| `src/conductor/provider/` | Gemini/Groq adapters and central vendor/model selection; `describeLlmConfig` is logged at startup |
+| `src/conductor/pdf.ts`, `src/conductor/material-parts.ts` | Material conversion; local PDF text extraction for Groq, cached by content hash |
+| `src/conductor/store.ts` | SQLite `route_plans`, plus `plan_materials` (the uploaded files, kept for the TA and never sent to the browser) |
+| `scripts/check-llm.ts` | `bun run --filter @grugchug/api check:llm`: one real call per tier to confirm the provider configuration |
 | `src/study/store.ts` | SQLite `study_sessions` and `station_results` tables: start, record a station verdict, end, and list a user's history |
 | `src/routes/study-sessions.ts` | Validated study-history endpoints backed by `src/study/store.ts` |
 
@@ -230,19 +233,45 @@ Paths below are relative to `apps/api/`.
 | `POST /api/conductor/plans` | Turn text/PDF study material into a persisted plan |
 | `GET /api/conductor/plans/:id` | Read the public plan without answer keys |
 | `POST /api/conductor/stations/:stationId/answer` | Grade a submitted answer |
-| `POST /api/conductor/ask` | Answer a question about the study material |
+| `POST /api/conductor/stations/:stationId/evaluate` | Station verdict from the mean score, with the professor's feedback |
+| `POST /api/conductor/ask` | The TA answers from the stored material, the station, and recent exchanges |
+| `POST /api/conductor/timer` | Length and message for a study stretch or break |
 
 Plan creation first produces station outlines, then generates questions for
-stations in parallel and persists the assembled route. MCQ grading is local;
-short answers and study questions use tools. Public schemas strip answer keys
-before returning plans to the browser.
+stations in parallel and persists the assembled route with its materials.
+Single-choice and select-all grading is local; short answers use the grader
+tool. Public schemas strip answer keys before returning plans to the browser.
+
+Sample content never becomes a route. If plan-route or any station's
+generate-questions falls back to its fixture, `POST /plans` returns 503
+`AI provider unavailable: <first error>` (for example
+`GROQ_FLASH_MODEL is not set`) and saves nothing; the web shows that
+message. `usedFallback` survives only on plans saved before this rule; the
+route summary still warns about those and offers Regenerate route, and they
+are never remembered for reuse.
+
+A station passes when the mean of its question scores reaches
+`PASS_THRESHOLD` (0.7, in shared). The API applies it and the web labels the
+overall score with it, so the verdict and the score always agree;
+evaluate-progress only writes feedback for the decided verdict.
+
+The TA (ask-conductor) receives the plan's stored materials, the current
+station's scope as focus, and the last `MAX_ASK_HISTORY` answered exchanges
+from the ask panel. Plans saved before materials were stored answer from the
+scope alone.
 
 Tools run through the harness: a flash-tier attempt plus up to two retries,
-then one pro-tier escalation, then a fixture if all attempts fail. Tools that
-request confidence checks use the configured threshold (currently 0.6).
-Successful results are cached by tool name/input. Provider calls have bounded
-waiting and trace records. Fixture fallback does not replace the database:
-plan persistence still requires a writable SQLite file.
+then one pro-tier escalation, then a fixture if all attempts fail. Each
+failed attempt and fallback is logged. Every tool sends its persona as the
+vendor's system instruction (Gemini `systemInstruction`, a Groq system
+message) with its own temperature. Tools that request confidence checks use
+the configured threshold (currently 0.6). Successful results are cached by
+tool name/input in a bounded map; set-timer opts out so its message varies.
+Fixture fallback does not replace the database: plan persistence still
+requires a writable SQLite file.
+
+`LLM_PROVIDER` defaults to Gemini. The chosen vendor needs its API key and
+both model names; the API logs what it found at startup (key length only).
 
 ## Study history
 
@@ -259,8 +288,11 @@ owner; another caller gets no access to the run. This is still placeholder
 identity, not authentication. The client calls use a bounded timeout; writes
 fail silently so a missing API never blocks a study session, and the read
 throws so the dashboard can say history is unavailable. The study session
-records its `historyId` in persisted state so a resumed session keeps
-writing to the same run.
+stores run metadata for bookkeeping. On refresh, it clears that metadata and
+ends the previous unfinished history record as quit, without restoring its
+plan or timer. Profile, uploaded materials, and history survive refresh.
+Pending API work is invalidated when quitting or starting another route so
+late responses cannot restart a finished session.
 
 `provider/index.ts` selects Gemini or Groq through `LLM_PROVIDER` and reads the
 vendor's API key and flash/pro model variables. Gemini receives PDF bytes;

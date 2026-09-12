@@ -4,7 +4,7 @@
 // (see ../pdf.ts); Gemini needs none of that since it reads PDF bytes
 // natively.
 import { extractPdfText } from "../pdf";
-import type { LLMProvider, ProviderPart, ProviderResult } from "./types";
+import type { GenerateOptions, LLMProvider, ProviderPart, ProviderResult } from "./types";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
@@ -23,7 +23,7 @@ export class GroqProvider implements LLMProvider {
     this.apiKey = apiKey;
   }
 
-  async generate(parts: ProviderPart[]): Promise<ProviderResult> {
+  async generate(parts: ProviderPart[], options: GenerateOptions = {}): Promise<ProviderResult> {
     const textChunks = await Promise.all(
       parts.map((part) =>
         part.kind === "text"
@@ -32,6 +32,10 @@ export class GroqProvider implements LLMProvider {
       ),
     );
     const content = textChunks.join("\n\n");
+    const messages = [
+      ...(options.system ? [{ role: "system", content: options.system }] : []),
+      { role: "user", content },
+    ];
 
     const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
       method: "POST",
@@ -41,8 +45,9 @@ export class GroqProvider implements LLMProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        messages: [{ role: "user", content }],
+        messages,
         response_format: { type: "json_object" },
+        ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
       }),
     });
     if (!res.ok) {
