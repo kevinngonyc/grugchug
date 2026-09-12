@@ -25,7 +25,7 @@ type CharacterProps = {
   // bubble while the train has speech.
   trainId?: string;
   // When set, the sprite is clickable and shows a pointer cursor on hover —
-  // the conductor uses this to open its panel. Unset for every other sprite.
+  // local conductors and passengers open their respective panels.
   onClick?: () => void;
   // Local conductor only: live study countdown above the sprite.
   showTimer?: boolean;
@@ -42,10 +42,10 @@ export function Character({
 }: CharacterProps) {
   const speech = useWorld((s) => (trainId === undefined ? undefined : s.trains[trainId]?.speech));
   // Zoomed in, the conductor is the subject of the shot rather than a thing
-  // to discover: no pointer, no grow.
+  // to discover: no pointer, no grow. Passengers remain selectable.
   const zoomed = useConductorUi((s) => s.open);
   const [hovered, setHovered] = useState(false);
-  const hoverable = onClick !== undefined && !zoomed;
+  const hoverable = onClick !== undefined && !(showTimer && zoomed);
   useCursor(hovered && hoverable);
   const texture = useTexture(url);
   // useTexture caches one Texture per URL, so this mutates a shared object on
@@ -94,7 +94,14 @@ export function Character({
           {/* biome-ignore lint/a11y/noStaticElementInteractions: this is a react-three-fiber <mesh>, a 3D object in the Canvas, not an HTML element */}
           <mesh
             ref={sprite}
-            onClick={onClick}
+            onClick={
+              onClick
+                ? (event) => {
+                    event.stopPropagation();
+                    onClick();
+                  }
+                : undefined
+            }
             onPointerOver={onClick ? () => setHovered(true) : undefined}
             onPointerOut={onClick ? () => setHovered(false) : undefined}
           >

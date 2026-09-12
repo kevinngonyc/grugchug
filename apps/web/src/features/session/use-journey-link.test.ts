@@ -7,7 +7,9 @@
 // process, not just this file).
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-const realChat = await import("@/features/chat");
+// Snapshot the exports before mocking: the module namespace has live bindings
+// that Bun updates when mock.module replaces a re-export.
+const realChat = { ...(await import("@/features/chat")) };
 const reportJourney = mock<typeof realChat.reportJourney>();
 
 mock.module("@/features/chat", () => ({ ...realChat, reportJourney }));

@@ -9,7 +9,7 @@ import { FocusRing } from "./focus-ring";
 import { assignColors } from "./player-color";
 import { formatFocusTime, rankTrains } from "./ranking";
 
-export function FocusBoard() {
+export function FocusBoard({ onSelectCharacter }: { onSelectCharacter?: () => void }) {
   const trains = useWorld(useShallow((s) => Object.values(s.trains)));
   const localTrainId = useWorld((s) => s.localTrainId);
   const conductorOpen = useConductorUi((s) => s.open);
@@ -32,12 +32,29 @@ export function FocusBoard() {
               title={`${train.owner.name} · ${percent}% focus`}
               className="flex flex-col items-center gap-0.5"
             >
-              <FocusRing
-                src={train.owner.spriteUrl}
-                name={train.owner.name}
-                fraction={train.efficiency}
-                color={color}
-              />
+              {train.id === localTrainId && onSelectCharacter ? (
+                <button
+                  type="button"
+                  aria-label="Change your character"
+                  title="Change your character"
+                  onClick={onSelectCharacter}
+                  className="rounded-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <FocusRing
+                    src={train.owner.spriteUrl}
+                    name={train.owner.name}
+                    fraction={train.efficiency}
+                    color={color}
+                  />
+                </button>
+              ) : (
+                <FocusRing
+                  src={train.owner.spriteUrl}
+                  name={train.owner.name}
+                  fraction={train.efficiency}
+                  color={color}
+                />
+              )}
               <span
                 className="rounded bg-white/90 px-1 text-[0.65rem] font-semibold tabular-nums"
                 style={{ color }}

@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { type RefObject, Suspense, useCallback, useEffect, useRef } from "react";
 import type { Group, Object3D } from "three";
 import { useConductorUi } from "@/features/conductor";
+import { useAvatarPickerUi } from "@/features/profile";
 import { targetSpeed, useWorld } from "@/features/world";
 import { Character } from "./character";
 import {
@@ -152,7 +153,10 @@ export function Train({ trainId, motion }: TrainProps) {
         </Suspense>
         {spriteUrl ? (
           <Suspense fallback={null}>
-            <Character url={spriteUrl} />
+            <Character
+              url={spriteUrl}
+              onClick={isLocal ? () => useAvatarPickerUi.getState().setOpen(true) : undefined}
+            />
           </Suspense>
         ) : null}
       </group>

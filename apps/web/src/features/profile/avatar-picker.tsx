@@ -8,8 +8,8 @@ type AvatarPickerProps = {
   disabled?: boolean;
 };
 
-// One button per drawing. Presentational: the page that renders it owns the
-// store, so this stays testable without fetch.
+// One button per drawing. Presentational: the containing dialog handles
+// persistence, so this stays testable without fetch.
 export function AvatarPicker({ selected, onSelect, disabled = false }: AvatarPickerProps) {
   return (
     <div className="flex flex-wrap gap-3">
