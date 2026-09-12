@@ -7,7 +7,7 @@
 export const KIT_ROTATION_Y = Math.PI / 2;
 
 // Lanes
-export const LANE_SPACING = 3; // metres deeper into the screen per lane
+export const LANE_SPACING = 4; // metres deeper into the screen per lane
 
 // Track: railroad-straight.glb is 4 m long with its origin at one end and
 // sits 1 m below its origin (measured), so lifting it by 1 puts rail top at 0.1.
@@ -37,9 +37,13 @@ export const RECYCLE_SPAN = 2 * VISIBLE_HALF_WIDTH;
 // Scenery
 export const SCENERY_SCALE = 1.5;
 export const SCENERY_PER_LANE = 16;
-export const SCENERY_MIN_DEPTH = 0.9; // behind the track, so it never covers the train
-export const SCENERY_MAX_DEPTH = 2.3;
-export const STATION_CLEARANCE = 5.5; // scenery slots this close to a station's centre hide until they recycle
+// behind the train's 0.71 m half-width plus a 0.57 m canopy, so nothing clips the body
+export const SCENERY_MIN_DEPTH = 1.4;
+export const SCENERY_MAX_DEPTH = 2.5; // stays clear of the next lane's train at LANE_SPACING 4
+// Scenery slots this close to a station's centre hide until they recycle.
+export const STATION_CLEARANCE = 5.5;
+// Station group z behind the track centre; the deck's front edge clears the train.
+export const STATION_DEPTH = 1.5;
 
 // Smoke
 export const SMOKE_PUFFS = 14;
