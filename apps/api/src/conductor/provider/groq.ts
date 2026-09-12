@@ -1,6 +1,9 @@
 // Groq provider. OpenAI-compatible chat completions over plain fetch — no
-// SDK needed. Groq's text models cannot read documents, so a document part
-// fails the call fast instead of silently dropping the material.
+// SDK needed. Groq's text models cannot read documents directly, so a
+// document part is converted to plain text with a local PDF parser first
+// (see ../pdf.ts); Gemini needs none of that since it reads PDF bytes
+// natively.
+import { extractPdfText } from "../pdf";
 import type { LLMProvider, ProviderPart, ProviderResult } from "./types";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
@@ -18,13 +21,14 @@ export class GroqProvider implements LLMProvider {
   ) {}
 
   async generate(parts: ProviderPart[]): Promise<ProviderResult> {
-    const textParts = parts.filter((part) => part.kind === "text");
-    if (textParts.length !== parts.length) {
-      throw new Error(
-        `groq provider (${this.model}) cannot read document input; only gemini reads PDFs natively`,
-      );
-    }
-    const content = textParts.map((part) => part.text).join("\n\n");
+    const textChunks = await Promise.all(
+      parts.map((part) =>
+        part.kind === "text"
+          ? part.text
+          : extractPdfText(part.base64).then((text) => `Document text:\n${text}`),
+      ),
+    );
+    const content = textChunks.join("\n\n");
 
     const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
       method: "POST",

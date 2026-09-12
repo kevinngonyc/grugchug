@@ -2,8 +2,9 @@
 // SDK or calls fetch directly — only an LLMProvider instance from
 // `./index`'s getProvider() factory.
 
-// One piece of model input. "document" is base64 file bytes (a PDF); only
-// Gemini reads these natively, Groq's text models cannot.
+// One piece of model input. "document" is base64 file bytes (a PDF).
+// Gemini reads these natively; Groq's text models can't, so GroqProvider
+// extracts the text locally first (see ../pdf.ts) before sending it.
 export type ProviderPart =
   | { kind: "text"; text: string }
   | { kind: "document"; mimeType: string; base64: string };
