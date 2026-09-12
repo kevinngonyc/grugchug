@@ -3,12 +3,13 @@
 Every train has a conductor: the hand-drawn avatar its owner picked, riding
 the locomotive. The conductor is the face of that user's personal agent. When
 the agent has something to say, the conductor bobs and a speech bubble appears
-above it. Conductors on different trains talk to each other this way.
+above it for as long as the voice clip plays. Conductors on different trains
+talk to each other this way.
 
 This spec covers picking an avatar, storing it under a browser-identified
-user record, and rendering speech in the scene. It builds on the train world
-spec (`2026-09-11-train-world-design.md`), which already renders one
-billboarded sprite per train from `TrainState.owner.spriteUrl`.
+user record, playing speech, and rendering it in the scene. It builds on the
+train world spec (`2026-09-11-train-world-design.md`), which already renders
+one billboarded sprite per train from `TrainState.owner.spriteUrl`.
 
 ## Decisions
 
@@ -19,8 +20,12 @@ billboarded sprite per train from `TrainState.owner.spriteUrl`.
   an id to its PNG URL; the wire format for trains keeps carrying `spriteUrl`.
 - Speech lives on the train in the shared schema, so friends' conductor
   bubbles arrive through the existing snapshot format with no new channel.
-- Speech expires by timestamp, not by timer. The store stamps `until`; the
-  scene compares against the clock. The scene still never writes the store.
+- Speech lasts as long as its voice clip. A speech player, a driver like the
+  session timer, plays the clip and clears the speech when it ends. Lines
+  without a clip fall back to a text-length duration. The store holds no
+  timers and the scene never writes it.
+- The scene shows a bubble and bobs the conductor exactly while a train has
+  `speech`. It knows nothing about audio or durations.
 - Bubbles are DOM, rendered in the scene with drei `Html`, so text wraps and
   styles like the rest of the app while following the sprite in 3D.
 - The user's own chat with their agent is a separate chatbox, not a bubble.
@@ -32,59 +37,80 @@ billboarded sprite per train from `TrainState.owner.spriteUrl`.
 AvatarId    = "conductor" | "bonbon" | "poku"
 User        = { id, name, avatar: AvatarId, createdAt }
 UserProfile = Pick<User, "name" | "avatar">          // PUT body
-Speech      = { id, text, until: number }             // until is epoch ms
+Speech      = { id, text, audioUrl?: string }
 TrainState  = { ...existing, speech?: Speech }
 ```
 
 `AvatarId`, `User`, and `UserProfile` live in `schemas/user.ts`; `Speech`
 joins `schemas/train.ts`.
 
-`speech.id` is unique per utterance so the bubble can re-animate when the
-same text is said twice and so snapshot upserts replace rather than merge.
-
-`until` is compared against the receiving client's clock. Skew between
-clients is accepted here and belongs to the multiplayer spec.
+`speech.id` is unique per utterance so the player plays each line once, the
+bubble re-animates when the same text is said twice, and snapshot upserts
+replace rather than merge. `audioUrl` is any URL the browser can play; where
+clips come from is the agent pipeline's concern.
 
 ## World store (`apps/web/src/features/world`)
 
 New commands:
 
-- `say(id, text)` — sets `speech` on the train to
-  `{ id: randomUUID(), text, until: Date.now() + speechDuration(text) }`.
-  Unknown train is a no-op. A new `say` replaces any live speech.
+- `say(id, text, audioUrl?)` — sets `speech` on the train to
+  `{ id: crypto.randomUUID(), text, audioUrl }`. Unknown train is a no-op. A
+  new `say` replaces any live speech.
+- `clearSpeech(id, speechId)` — removes `speech` from the train only if its
+  current `speech.id` equals `speechId`, so a line that finished late can't
+  wipe a newer one.
 - `setOwner(id, owner)` — replaces `owner` so the session can push a changed
   name or avatar onto the local train.
 
-`speechDuration(text)` in `speech.ts` is pure: a base of 1.5 s plus 50 ms per
-character, clamped to 2 s .. 8 s.
+The store stays pure data. Nothing in it knows how long speech lasts.
 
-No timers. Nothing in the store clears speech; it is simply stale once
-`Date.now() >= until`, and the next `say` overwrites it.
+## Speech player (`apps/web/src/features/speech`)
+
+New feature, no rendering. It watches the world for new utterances on any
+train, plays them, and clears them when they finish.
+
+| File | Responsibility |
+|---|---|
+| `player.ts` | `createSpeechPlayer({ createAudio, setTimeout, clearTimeout })` returns `{ start(), stop() }`. `start` subscribes to `useWorld`; for each train whose `speech.id` it has not seen, it plays that speech. Ended, errored, or rejected playback calls `clearSpeech(trainId, speech.id)`. `stop` unsubscribes and stops anything playing |
+| `duration.ts` | `speechDuration(text)`: 1.5 s plus 50 ms per character, clamped to 2 s .. 8 s. Used when there is no clip |
+| `use-speech-player.ts` | `useSpeechPlayer()` creates one player with the real `Audio` constructor and window timers, starts it on mount, stops on unmount |
+
+Behaviour:
+
+- With `audioUrl`: `createAudio(url)`, `play()`. Clear on `ended`, on
+  `error`, and if `play()` rejects. Autoplay policies reject `play()` before
+  the user has interacted with the page; in that case the line falls back to
+  the text-length timer instead of vanishing.
+- Without `audioUrl`: a timer for `speechDuration(text)`, then clear.
+- Seen ids are kept in a `Set` so a snapshot that re-delivers a friend's
+  speech after the player has already handled it does not replay it. One
+  utterance plays at a time per train; a new `say` on a train stops that
+  train's current clip and clears its timer.
+- Friends' clips play locally too. Conductors are meant to be heard talking
+  to each other.
 
 ## Scene (`apps/web/src/features/scene`)
 
 | File | Change |
 |---|---|
-| `character.tsx` | Takes `trainId` as well as `url`. Subscribes to that train's `speech`. Wraps the billboard in a group whose y offset bobs while speech is live. Renders `SpeechBubble` inside the bobbing group |
-| `speech-bubble.tsx` | New. drei `Html` above the sprite showing `speech.text` in a rounded bubble with a tail. Hidden once `until` passes |
+| `character.tsx` | Takes `trainId` as well as `url`. Subscribes to that train's `speech`. Wraps the billboard in a group whose y offset bobs while `speech` is set. Renders `SpeechBubble` inside the bobbing group when `speech` is set |
+| `speech-bubble.tsx` | New. drei `Html` above the sprite showing `speech.text` in a rounded bubble with a tail. Keyed by `speech.id` so a repeated line re-animates |
 | `train.tsx` | Passes `trainId` to `Character` |
 | `constants.ts` | `BUBBLE_OFFSET`, `BOB_AMPLITUDE`, `BOB_FREQUENCY` |
 
 Behaviour:
 
-- Bob: in `useFrame`, an amplitude scalar eases toward 1 while
-  `Date.now() < speech.until` and toward 0 otherwise. A phase accumulator
-  advances only while the amplitude is above zero. `y = amplitude *
-  BOB_AMPLITUDE * sin(phase)`. The sprite therefore settles smoothly instead
-  of snapping when speech ends. Per-frame state is in refs, never React
-  state, matching the wheels and smoke.
+- Bob: in `useFrame`, an amplitude scalar eases toward 1 while the train has
+  `speech` and toward 0 otherwise. A phase accumulator advances only while
+  the amplitude is above zero. `y = amplitude * BOB_AMPLITUDE * sin(phase)`.
+  The sprite settles smoothly instead of snapping when speech ends. Per-frame
+  state is in refs, never React state, matching the wheels and smoke.
 - Bubble: `Html` with `center`, a `distanceFactor` so far lanes get slightly
   smaller bubbles, and a low `zIndexRange` so the dev panel stays on top.
   Content is a Tailwind div: `bg-background`, border, rounded, max width, a
   small triangular tail pointing down. It pops in with `tw-animate-css`
-  (`animate-in fade-in zoom-in`). A `setTimeout` for `until - now` flips a
-  local `visible` flag off; a new `speech.id` resets it. Speaker name is not
-  shown; the bubble sits over the speaker.
+  (`animate-in fade-in zoom-in`) and unmounts when `speech` clears. Speaker
+  name is not shown; the bubble sits over the speaker.
 - Because the bubble is inside the bobbing group, it bobs with the conductor.
 
 ## Profile (`apps/web/src/features/profile`)
@@ -111,18 +137,18 @@ and `AvatarPicker`.
 ## Wiring
 
 - `routes/settings.tsx` renders `AvatarPicker` under the heading.
-- `routes/session.tsx` calls `useProfile().load()` on mount, creates the local
-  train once `status` is `ready` or `error`, with `owner: { name: user.name,
-  spriteUrl: avatarUrl(user.avatar) }` or the default profile on error, so
-  the API being down never blocks a session. It calls `setOwner` on the local
-  train whenever `user` changes afterwards. The world store persists across
-  routes, so this is what carries a new avatar from Settings to a train that
-  already exists.
+- `routes/session.tsx` calls `useProfile().load()` and `useSpeechPlayer()` on
+  mount. It creates the local train once `status` is `ready` or `error`, with
+  `owner: { name: user.name, spriteUrl: avatarUrl(user.avatar) }` or the
+  default profile on error, so the API being down never blocks a session. It
+  calls `setOwner` on the local train whenever `user` changes afterwards. The
+  world store persists across routes, so this is what carries a new avatar
+  from Settings to a train that already exists.
 - `routes/session-dev-panel.tsx` gains a "chatter" button: every train says
-  one line from a small canned list, staggered by 1.5 s per train, so
-  cross-train bubbles and bobbing can be checked by hand. Friend trains keep
-  using `bonbon.png`. The panel gets `z-20` so it sits above the bubbles'
-  `zIndexRange`.
+  one line from a small canned list with no clip, staggered by 1.5 s per
+  train, so cross-train bubbles, bobbing, and the fallback timer can be
+  checked by hand. Friend trains keep using `bonbon.png`. The panel gets
+  `z-20` so it sits above the bubbles' `zIndexRange`.
 
 ## Assets
 
@@ -131,13 +157,22 @@ and `AvatarPicker`.
 its id to the shared enum, its PNG here, and its display name in
 `avatars.ts`.
 
+No voice clips ship with this spec. The player takes whatever URL a `say`
+carries.
+
 ## Testing
 
 - `packages/shared`: `userProfileSchema` rejects an unknown avatar;
   `trainStateSchema` accepts a train with and without `speech`.
-- `features/world`: `say` sets text and an `until` in the future and replaces
-  live speech; `say` on an unknown id is a no-op; `speechDuration` clamps at
-  both ends; `setOwner` replaces the owner.
+- `features/world`: `say` sets text, a fresh id, and the clip URL, and
+  replaces live speech; `say` on an unknown id is a no-op; `clearSpeech`
+  removes a matching id and leaves a newer one alone; `setOwner` replaces the
+  owner.
+- `features/speech`: with a fake `createAudio` and fake timers, a `say` with a
+  clip plays it and clears on `ended`; a rejected `play()` falls back to the
+  timer; a `say` without a clip clears after `speechDuration`; a second `say`
+  on the same train stops the first clip; a re-delivered seen id is not
+  replayed; `stop` unsubscribes. `speechDuration` clamps at both ends.
 - `features/profile`: `getUserId` returns the same id on a second call and
   survives a fresh read of localStorage; `AVATARS` has one entry per enum
   value; `load` with a mocked `fetch` creates the default on 404 and reaches
@@ -151,9 +186,10 @@ its id to the shared enum, its PNG here, and its display name in
 
 ## Out of scope
 
-- Typewriter text reveal and voice.
+- Generating voice clips. Text to speech, storage, and serving clips belong
+  to the agent pipeline. This spec only plays a URL.
+- Typewriter text reveal and lip sync.
 - Editing the display name. The default is "You".
 - The agent transport that will eventually call `say`. Agents reach world
   commands through the API in their own spec.
 - The user's chatbox for talking to their own agent.
-- Clock skew between clients for `until`. Multiplayer spec.
