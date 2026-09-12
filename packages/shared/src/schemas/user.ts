@@ -6,7 +6,8 @@ export const avatarIdSchema = z.enum(["conductor", "bonbon", "poku"]);
 export type AvatarId = z.infer<typeof avatarIdSchema>;
 
 // Identified by the browser, not an account: the web mints `id` once and keeps
-// it in localStorage. The avatar is the conductor that rides this user's train.
+// it in localStorage. The avatar is the passenger riding this user's carriage;
+// the conductor on the locomotive is the agent's face.
 export const userSchema = z.object({
   id: z.string(),
   name: z.string().min(1),

@@ -16,6 +16,40 @@ describe("users routes", () => {
     const users = createUserRoutes(memoryUserRepo());
     const res = await users.get("u1");
     expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "user not found" });
+  });
+
+  test.each(["", "x".repeat(65)])(
+    "GET rejects an invalid id before reading the repo (%j)",
+    async (id) => {
+      const repo = memoryUserRepo();
+      await repo.upsert(id, { name: "You", avatar: "poku" });
+      const users = createUserRoutes(repo);
+      const res = await users.get(id);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        error: "invalid user id",
+        detail: "must be 1 to 64 characters",
+      });
+    },
+  );
+
+  test.each(["", "x".repeat(65)])(
+    "PUT rejects an invalid id and stores nothing (%j)",
+    async (id) => {
+      const repo = memoryUserRepo();
+      const users = createUserRoutes(repo);
+      const res = await users.put(id, put(id, json({ name: "You", avatar: "poku" })));
+      expect(res.status).toBe(400);
+      expect(await repo.get(id)).toBeNull();
+    },
+  );
+
+  test("a 64-character id can be saved and fetched", async () => {
+    const users = createUserRoutes(memoryUserRepo());
+    const id = "x".repeat(64);
+    expect((await users.put(id, put(id, json({ name: "You", avatar: "poku" })))).status).toBe(200);
+    expect((await users.get(id)).status).toBe(200);
   });
 
   test("PUT creates the user and GET returns it", async () => {
@@ -45,6 +79,7 @@ describe("users routes", () => {
     const users = createUserRoutes(memoryUserRepo());
     const res = await users.put("u1", put("u1", "not json"));
     expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid profile", detail: "body must be JSON" });
   });
 
   test("a second PUT updates the profile but keeps createdAt", async () => {

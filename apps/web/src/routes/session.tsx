@@ -36,6 +36,8 @@ export function Session() {
     if (localTrainId !== null) return;
     if (status !== "ready" && status !== "error") return;
     const w = useWorld.getState();
+    // StrictMode runs mount effects twice in dev; recheck the live store.
+    if (w.localTrainId !== null) return;
     w.addTrain({
       id: LOCAL_TRAIN_ID,
       owner: profileOwner(user),
@@ -62,7 +64,7 @@ export function Session() {
     <div className="absolute inset-0">
       <TrainWorld />
       {dev ? <SessionDevPanel /> : null}
-      <div className="absolute bottom-4 left-4 rounded-lg bg-white/90 font-mono">
+      <div className="absolute bottom-4 left-4 z-10 rounded-lg bg-white/90 font-mono">
         <div className="px-4 pt-3 text-sm font-semibold">Focus {Math.round(score)}/100</div>
         <Gaze debug={dev} onFacing={reportAttention} />
       </div>

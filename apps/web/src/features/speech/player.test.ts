@@ -112,6 +112,18 @@ describe("createSpeechPlayer", () => {
     expect(speechOf("local")).toBeUndefined();
   });
 
+  test("ended clears the fallback timer after a rejected play", async () => {
+    const { audios, timers, player } = setup({ rejectPlay: true });
+    player.start();
+    useWorld.getState().say("local", "Hi", "/voices/1.mp3");
+    await flush();
+    expect(timers.pending).toHaveLength(1);
+    audios[0]?.fire("ended");
+    expect(speechOf("local")).toBeUndefined();
+    expect(timers.pending).toHaveLength(0);
+    player.stop();
+  });
+
   test("a clip that errors falls back to the text timer once", async () => {
     const { audios, timers, player } = setup({ rejectPlay: true });
     player.start();

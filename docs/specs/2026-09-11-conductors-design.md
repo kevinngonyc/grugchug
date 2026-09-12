@@ -228,3 +228,6 @@ carries.
 - The local train no longer starts `stopped` with `efficiency: 0.7`; main
   changed it to `running` with the efficiency score before this landed, and
   the session keeps that.
+- The dev panel's chatter button has the local conductor say the start-of-session
+  voice line with its clip, while friend trains say canned text lines. The
+  wiring section above specified a canned line for every train.

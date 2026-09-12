@@ -43,6 +43,7 @@ export function createSpeechPlayer(deps: SpeechPlayerDeps): SpeechPlayer {
   const finish = (trainId: string, speechId: string) => {
     const entry = playing.get(trainId);
     if (entry?.speechId !== speechId) return;
+    halt(entry);
     playing.delete(trainId);
     useWorld.getState().clearSpeech(trainId, speechId);
   };
