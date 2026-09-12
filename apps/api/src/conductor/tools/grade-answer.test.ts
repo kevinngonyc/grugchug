@@ -1,9 +1,9 @@
-// Offline: gradeMcq is pure, no LLM at all. gradeShortAnswerToolSpec is
-// exercised through a fake provider — no network.
+// Offline: gradeMcq and gradeMulti are pure, no LLM at all.
+// gradeShortAnswerToolSpec is exercised through a fake provider — no network.
 import { describe, expect, test } from "bun:test";
 import { runTool } from "../harness";
 import type { LLMProvider } from "../provider";
-import { gradeMcq, gradeShortAnswerToolSpec } from "./grade-answer";
+import { gradeMcq, gradeMulti, gradeShortAnswerToolSpec } from "./grade-answer";
 
 const mcqQuestion = {
   id: "q1",
@@ -11,6 +11,14 @@ const mcqQuestion = {
   prompt: "2 + 2?",
   choices: ["3", "4"],
   correctIndex: 1,
+};
+
+const multiQuestion = {
+  id: "q2",
+  type: "multi" as const,
+  prompt: "Select every even number",
+  choices: ["1", "2", "3", "4"],
+  correctIndices: [1, 3],
 };
 
 function fakeProvider(text: string): LLMProvider {
@@ -28,6 +36,28 @@ describe("gradeMcq", () => {
 
   test("fails a wrong choice", () => {
     expect(gradeMcq(mcqQuestion, 0)).toMatchObject({ questionId: "q1", score: 0, passed: false });
+  });
+});
+
+describe("gradeMulti", () => {
+  test("passes the exact correct set, in any order", () => {
+    expect(gradeMulti(multiQuestion, [3, 1])).toMatchObject({
+      questionId: "q2",
+      score: 1,
+      passed: true,
+    });
+  });
+
+  test("fails a set missing one correct choice", () => {
+    expect(gradeMulti(multiQuestion, [1])).toMatchObject({ score: 0, passed: false });
+  });
+
+  test("fails a set with an extra wrong choice", () => {
+    expect(gradeMulti(multiQuestion, [1, 3, 0])).toMatchObject({ score: 0, passed: false });
+  });
+
+  test("fails an empty selection", () => {
+    expect(gradeMulti(multiQuestion, [])).toMatchObject({ score: 0, passed: false });
   });
 });
 

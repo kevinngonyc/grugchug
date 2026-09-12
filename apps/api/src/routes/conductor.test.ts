@@ -44,6 +44,9 @@ function mcq(id: string): Question {
 function short(id: string): Question {
   return { id, type: "short", prompt: "p", rubric: "r", referenceAnswer: "a" };
 }
+function multi(id: string): Question {
+  return { id, type: "multi", prompt: "p", choices: ["a", "b", "c"], correctIndices: [0, 1] };
+}
 const fourQuestions: Question[] = [mcq("q1"), mcq("q2"), mcq("q3"), short("q4")];
 
 describe("createPlan", () => {
@@ -256,7 +259,7 @@ describe("answerStation", () => {
         title: "One",
         scope: "x",
         estimatedMinutes: 10,
-        questions: fourQuestions,
+        questions: [...fourQuestions, multi("q5")],
       },
     ],
   };
@@ -275,6 +278,19 @@ describe("answerStation", () => {
     let called = false;
     const res = await answer(
       { planId: "p1", questionId: "q1", answer: { type: "mcq", choiceIndex: 0 } },
+      async () => {
+        called = true;
+        return toolResult<GradeShortOutput>({ score: 1, passed: true, feedback: "" });
+      },
+    );
+    expect(await res.json()).toMatchObject({ score: 1, passed: true });
+    expect(called).toBe(false);
+  });
+
+  test("grades multi locally without calling gradeShort", async () => {
+    let called = false;
+    const res = await answer(
+      { planId: "p1", questionId: "q5", answer: { type: "multi", choiceIndices: [1, 0] } },
       async () => {
         called = true;
         return toolResult<GradeShortOutput>({ score: 1, passed: true, feedback: "" });

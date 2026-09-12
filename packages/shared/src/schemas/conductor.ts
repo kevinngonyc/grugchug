@@ -3,13 +3,24 @@ import { z } from "zod";
 // Hard cap on stations per route. The route planner prompt repeats this number.
 export const MAX_STATIONS = 6;
 
-// A multiple-choice question as stored. correctIndex points into choices.
+// A single-choice question as stored. correctIndex points into choices.
 const mcqQuestionBase = z.object({
   id: z.string(),
   type: z.literal("mcq"),
   prompt: z.string().min(1),
   choices: z.array(z.string().min(1)).min(2).max(6),
   correctIndex: z.number().int().nonnegative(),
+});
+
+// A "select all that apply" question. At least two choices are correct, and
+// at least one is not — a question where every choice is right isn't really
+// asking anything, and one right answer is just an mcq.
+const multiQuestionBase = z.object({
+  id: z.string(),
+  type: z.literal("multi"),
+  prompt: z.string().min(1),
+  choices: z.array(z.string().min(1)).min(3).max(6),
+  correctIndices: z.array(z.number().int().nonnegative()).min(2),
 });
 
 // A short-answer question as stored. rubric and referenceAnswer drive grading.
@@ -23,17 +34,29 @@ const shortQuestionBase = z.object({
 
 // A question with its answer key. Never sent to the browser: see publicQuestionSchema.
 export const questionSchema = z
-  .discriminatedUnion("type", [mcqQuestionBase, shortQuestionBase])
+  .discriminatedUnion("type", [mcqQuestionBase, multiQuestionBase, shortQuestionBase])
   .refine((q) => q.type !== "mcq" || q.correctIndex < q.choices.length, {
     message: "correctIndex must point into choices",
     path: ["correctIndex"],
-  });
+  })
+  .refine(
+    (q) =>
+      q.type !== "multi" ||
+      (new Set(q.correctIndices).size === q.correctIndices.length &&
+        q.correctIndices.every((i) => i < q.choices.length) &&
+        q.correctIndices.length < q.choices.length),
+    {
+      message: "correctIndices must be distinct, point into choices, and not cover every choice",
+      path: ["correctIndices"],
+    },
+  );
 
 export type Question = z.infer<typeof questionSchema>;
 
 // A question as the browser sees it: the answer key is stripped.
 export const publicQuestionSchema = z.discriminatedUnion("type", [
   mcqQuestionBase.omit({ correctIndex: true }),
+  multiQuestionBase.omit({ correctIndices: true }),
   shortQuestionBase.omit({ rubric: true, referenceAnswer: true }),
 ]);
 
@@ -102,6 +125,10 @@ export type CreatePlanRequest = z.infer<typeof createPlanRequestSchema>;
 // A learner's answer to one question.
 export const answerSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("mcq"), choiceIndex: z.number().int().nonnegative() }),
+  z.object({
+    type: z.literal("multi"),
+    choiceIndices: z.array(z.number().int().nonnegative()),
+  }),
   z.object({ type: z.literal("short"), text: z.string().max(5000) }),
 ]);
 

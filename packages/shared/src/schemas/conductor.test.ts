@@ -88,6 +88,57 @@ describe("questionSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  const multi = {
+    id: "q",
+    type: "multi" as const,
+    prompt: "Select every pigment",
+    choices: ["Chlorophyll a", "Chlorophyll b", "Carotenoid", "Starch"],
+    correctIndices: [0, 1, 2],
+  };
+
+  test("accepts a select-all-that-apply question", () => {
+    expect(questionSchema.safeParse(multi).success).toBe(true);
+  });
+
+  test("rejects a multi question with only one correct choice", () => {
+    const result = questionSchema.safeParse({ ...multi, correctIndices: [0] });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects a multi question where every choice is correct", () => {
+    const result = questionSchema.safeParse({ ...multi, correctIndices: [0, 1, 2, 3] });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects a multi question with a correctIndices entry outside choices", () => {
+    const result = questionSchema.safeParse({ ...multi, correctIndices: [0, 9] });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects duplicate entries in correctIndices", () => {
+    const result = questionSchema.safeParse({ ...multi, correctIndices: [0, 0] });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("publicQuestionSchema", () => {
+  test("strips correctIndices from a multi question", () => {
+    const multi = {
+      id: "q",
+      type: "multi" as const,
+      prompt: "Select every pigment",
+      choices: ["Chlorophyll a", "Chlorophyll b", "Carotenoid", "Starch"],
+      correctIndices: [0, 1, 2],
+    };
+    const pub = publicStationSchema.parse({ ...station, questions: [multi] }).questions[0];
+    expect(pub).toEqual({
+      id: "q",
+      type: "multi",
+      prompt: "Select every pigment",
+      choices: ["Chlorophyll a", "Chlorophyll b", "Carotenoid", "Starch"],
+    });
+  });
 });
 
 describe("materialSchema", () => {
