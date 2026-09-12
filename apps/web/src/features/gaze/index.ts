@@ -2,3 +2,5 @@
 // looking, and turns that into GazeSample values and attention metrics.
 // Everything exported from here must work without the 3D scene.
 export type { GazeSample } from "@grugchug/shared";
+
+export { Gaze } from "./gaze";

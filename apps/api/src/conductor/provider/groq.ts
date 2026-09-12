@@ -15,10 +15,13 @@ interface GroqChatCompletion {
 export class GroqProvider implements LLMProvider {
   readonly provider = "groq" as const;
 
-  constructor(
-    readonly model: string,
-    private readonly apiKey: string,
-  ) {}
+  readonly model: string;
+  private readonly apiKey: string;
+
+  constructor(model: string, apiKey: string) {
+    this.model = model;
+    this.apiKey = apiKey;
+  }
 
   async generate(parts: ProviderPart[]): Promise<ProviderResult> {
     const textChunks = await Promise.all(

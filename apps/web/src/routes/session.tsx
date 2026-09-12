@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router";
+import { Gaze } from "@/features/gaze";
 import { TrainWorld } from "@/features/scene";
 import { useWorld } from "@/features/world";
 import { SessionDevPanel } from "./session-dev-panel";
@@ -29,6 +30,9 @@ export function Session() {
     <div className="absolute inset-0">
       <TrainWorld />
       {dev ? <SessionDevPanel /> : null}
+      <div className="absolute bottom-4 left-4 rounded-lg bg-white/90">
+        <Gaze debug={dev} />
+      </div>
     </div>
   );
 }

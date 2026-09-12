@@ -8,10 +8,10 @@ export class GeminiProvider implements LLMProvider {
   readonly provider = "gemini" as const;
   private readonly client: GoogleGenAI;
 
-  constructor(
-    readonly model: string,
-    apiKey: string,
-  ) {
+  readonly model: string;
+
+  constructor(model: string, apiKey: string) {
+    this.model = model;
     this.client = new GoogleGenAI({ apiKey });
   }
 

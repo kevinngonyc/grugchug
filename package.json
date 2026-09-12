@@ -16,5 +16,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2",
     "typescript": "^6"
+  },
+  "dependencies": {
+    "@webgazer-ts/core": "^0.2.0"
   }
 }
