@@ -4,14 +4,19 @@ import { describe, expect, test } from "bun:test";
 import type { Question, RoutePlan } from "@grugchug/shared";
 import { fixtureRoutePlan } from "../conductor/fixtures";
 import type { ToolRunResult } from "../conductor/harness";
+import type { EvaluateProgressOutput } from "../conductor/tools/evaluate-progress";
 import type { GenerateQuestionsOutput } from "../conductor/tools/generate-questions";
 import type { GradeShortOutput } from "../conductor/tools/grade-answer";
 import type { PlanRouteOutput } from "../conductor/tools/plan-route";
+import type { SetTimerOutput } from "../conductor/tools/set-timer";
 import {
   answerStationWithDeps,
   askConductorWithDeps,
   createPlanWithDeps,
+  type EvaluateProgressDeps,
+  evaluateProgressWithDeps,
   getPlanWithDeps,
+  setTimerWithDeps,
 } from "./conductor";
 
 const answerKeys = /correctIndex|rubric|referenceAnswer/;
@@ -313,6 +318,140 @@ describe("askConductor", () => {
       {
         get: async () => null,
         runAsk: async () => toolResult({ answer: "n/a" }),
+      },
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("setTimer", () => {
+  const plan: RoutePlan = {
+    id: "p1",
+    userId: "u1",
+    materialHash: "h",
+    totalEstimatedMinutes: 10,
+    stations: [
+      {
+        id: "s1",
+        index: 0,
+        title: "One",
+        scope: "station scope",
+        estimatedMinutes: 10,
+        questions: fourQuestions,
+      },
+    ],
+  };
+
+  test("resolves the station's scope from stationId and returns the tool's output", async () => {
+    let receivedInput: unknown;
+    const res = await setTimerWithDeps(
+      post("/api/conductor/timer", { planId: "p1", stationId: "s1", reason: "study" }),
+      {
+        get: async () => plan,
+        runSetTimer: async (input) => {
+          receivedInput = input;
+          return toolResult<SetTimerOutput>({ minutes: 15, message: "Let's go." });
+        },
+      },
+    );
+    expect(await res.json()).toEqual({ minutes: 15, message: "Let's go." });
+    expect(receivedInput).toEqual({
+      reason: "study",
+      scope: "station scope",
+      previousMinutes: undefined,
+    });
+  });
+
+  test("omits scope for a break with no stationId", async () => {
+    let receivedInput: unknown;
+    const res = await setTimerWithDeps(
+      post("/api/conductor/timer", { planId: "p1", reason: "break", previousMinutes: 40 }),
+      {
+        get: async () => plan,
+        runSetTimer: async (input) => {
+          receivedInput = input;
+          return toolResult<SetTimerOutput>({ minutes: 12, message: "Take a breather." });
+        },
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(receivedInput).toEqual({ reason: "break", scope: undefined, previousMinutes: 40 });
+  });
+
+  test("404s when the plan does not exist", async () => {
+    const res = await setTimerWithDeps(
+      post("/api/conductor/timer", { planId: "missing", reason: "study" }),
+      {
+        get: async () => null,
+        runSetTimer: async () => toolResult<SetTimerOutput>({ minutes: 10, message: "x" }),
+      },
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("evaluateProgress", () => {
+  const plan: RoutePlan = {
+    id: "p1",
+    userId: "u1",
+    materialHash: "h",
+    totalEstimatedMinutes: 10,
+    stations: [
+      {
+        id: "s1",
+        index: 0,
+        title: "One",
+        scope: "station scope",
+        estimatedMinutes: 10,
+        questions: fourQuestions,
+      },
+    ],
+  };
+
+  function evaluate(body: unknown, runEvaluate?: EvaluateProgressDeps["runEvaluate"]) {
+    const req = post("/api/conductor/stations/s1/evaluate", body);
+    return evaluateProgressWithDeps(Object.assign(req, { params: { stationId: "s1" } }), {
+      get: async () => plan,
+      runEvaluate:
+        runEvaluate ??
+        (async () => toolResult<EvaluateProgressOutput>({ passed: true, feedback: "Nice work." })),
+    });
+  }
+
+  test("passes the station scope and results through to the tool", async () => {
+    let receivedInput: unknown;
+    const results = [
+      { questionId: "q1", prompt: "2+2?", answerGiven: "4", score: 1, feedback: "Correct." },
+    ];
+    const res = await evaluate({ planId: "p1", results }, async (input) => {
+      receivedInput = input;
+      return toolResult<EvaluateProgressOutput>({ passed: true, feedback: "Great." });
+    });
+    expect(await res.json()).toEqual({ passed: true, feedback: "Great." });
+    expect(receivedInput).toEqual({ scope: "station scope", results });
+  });
+
+  test("rejects a result whose questionId is not in this station", async () => {
+    const res = await evaluate({
+      planId: "p1",
+      results: [
+        { questionId: "not-in-station", prompt: "x", answerGiven: "y", score: 1, feedback: "z" },
+      ],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("404s when the plan does not exist", async () => {
+    const req = post("/api/conductor/stations/s1/evaluate", {
+      planId: "missing",
+      results: [{ questionId: "q1", prompt: "x", answerGiven: "y", score: 1, feedback: "z" }],
+    });
+    const res = await evaluateProgressWithDeps(
+      Object.assign(req, { params: { stationId: "s1" } }),
+      {
+        get: async () => null,
+        runEvaluate: async () =>
+          toolResult<EvaluateProgressOutput>({ passed: false, feedback: "n/a" }),
       },
     );
     expect(res.status).toBe(404);

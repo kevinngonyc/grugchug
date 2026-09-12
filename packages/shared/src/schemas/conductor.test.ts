@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  evaluateProgressRequestSchema,
   materialSchema,
   publicRoutePlanSchema,
   publicStationSchema,
   questionSchema,
   type Station,
+  setTimerRequestSchema,
+  setTimerResponseSchema,
   stationSchema,
 } from "./conductor";
 
@@ -95,5 +98,45 @@ describe("materialSchema", () => {
 
   test("rejects a pdf that is not base64", () => {
     expect(materialSchema.safeParse({ kind: "pdf", base64: "not base64!" }).success).toBe(false);
+  });
+});
+
+describe("setTimerRequestSchema", () => {
+  test("accepts a break request with no stationId", () => {
+    const result = setTimerRequestSchema.safeParse({
+      planId: "p1",
+      reason: "break",
+      previousMinutes: 40,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects an unknown reason", () => {
+    const result = setTimerRequestSchema.safeParse({ planId: "p1", reason: "nap" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("setTimerResponseSchema", () => {
+  test("rejects a minutes value over the sanity cap", () => {
+    const result = setTimerResponseSchema.safeParse({ minutes: 500, message: "ok" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("evaluateProgressRequestSchema", () => {
+  test("rejects an empty results array", () => {
+    const result = evaluateProgressRequestSchema.safeParse({ planId: "p1", results: [] });
+    expect(result.success).toBe(false);
+  });
+
+  test("accepts one or more results", () => {
+    const result = evaluateProgressRequestSchema.safeParse({
+      planId: "p1",
+      results: [
+        { questionId: "q1", prompt: "p", answerGiven: "a", score: 1, feedback: "Correct." },
+      ],
+    });
+    expect(result.success).toBe(true);
   });
 });

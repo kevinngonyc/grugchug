@@ -19,20 +19,26 @@ import {
   askRequestSchema,
   askResponseSchema,
   createPlanRequestSchema,
+  evaluateProgressRequestSchema,
+  evaluateProgressResponseSchema,
   type Material,
   publicRoutePlanSchema,
   type Question,
   type RoutePlan,
   type Station,
+  setTimerRequestSchema,
+  setTimerResponseSchema,
 } from "@grugchug/shared";
 import type { z } from "zod";
 import { fixtureRoutePlan } from "../conductor/fixtures";
 import { getRoutePlanById, saveRoutePlan } from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
+import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
 import { generateQuestionsTool } from "../conductor/tools/generate-questions";
 import { gradeMcq, gradeShortAnswerTool } from "../conductor/tools/grade-answer";
 import type { StationSkeleton } from "../conductor/tools/plan-route";
 import { planRouteTool } from "../conductor/tools/plan-route";
+import { setTimerTool } from "../conductor/tools/set-timer";
 
 type WithParams<P extends string> = Request & { params: Record<P, string> };
 
@@ -273,4 +279,71 @@ export async function askConductorWithDeps(
 // POST /api/conductor/ask
 export function askConductor(req: Request): Promise<Response> {
   return askConductorWithDeps(req, defaultAskConductorDeps);
+}
+
+export interface SetTimerDeps extends PlanLookupDeps {
+  runSetTimer: typeof setTimerTool.run;
+}
+
+const defaultSetTimerDeps: SetTimerDeps = {
+  get: getRoutePlanById,
+  runSetTimer: setTimerTool.run,
+};
+
+export async function setTimerWithDeps(req: Request, deps: SetTimerDeps): Promise<Response> {
+  const body = await readBody(req, setTimerRequestSchema);
+  if (!body.ok) return body.response;
+  const { planId, stationId, reason, previousMinutes } = body.data;
+
+  const found = await loadPlan(planId, deps.get);
+  if (!found.ok) return found.response;
+
+  const station = stationId ? found.plan.stations.find((s) => s.id === stationId) : undefined;
+  const result = await deps.runSetTimer({ reason, scope: station?.scope, previousMinutes });
+  return Response.json(setTimerResponseSchema.parse(result.output));
+}
+
+// POST /api/conductor/timer
+export function setTimer(req: Request): Promise<Response> {
+  return setTimerWithDeps(req, defaultSetTimerDeps);
+}
+
+export interface EvaluateProgressDeps extends PlanLookupDeps {
+  runEvaluate: typeof evaluateProgressTool.run;
+}
+
+const defaultEvaluateProgressDeps: EvaluateProgressDeps = {
+  get: getRoutePlanById,
+  runEvaluate: evaluateProgressTool.run,
+};
+
+export async function evaluateProgressWithDeps(
+  req: WithParams<"stationId">,
+  deps: EvaluateProgressDeps,
+): Promise<Response> {
+  const body = await readBody(req, evaluateProgressRequestSchema);
+  if (!body.ok) return body.response;
+  const { planId, results } = body.data;
+
+  const found = await loadPlan(planId, deps.get);
+  if (!found.ok) return found.response;
+
+  const station = found.plan.stations.find((s) => s.id === req.params.stationId);
+  if (!station) return Response.json({ error: "station not found" }, { status: 404 });
+
+  const knownQuestionIds = new Set(station.questions.map((q) => q.id));
+  if (!results.every((r) => knownQuestionIds.has(r.questionId))) {
+    return Response.json(
+      { error: "results reference a question that is not in this station" },
+      { status: 400 },
+    );
+  }
+
+  const result = await deps.runEvaluate({ scope: station.scope, results });
+  return Response.json(evaluateProgressResponseSchema.parse(result.output));
+}
+
+// POST /api/conductor/stations/:stationId/evaluate
+export function evaluateProgress(req: WithParams<"stationId">): Promise<Response> {
+  return evaluateProgressWithDeps(req, defaultEvaluateProgressDeps);
 }

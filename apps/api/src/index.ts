@@ -4,7 +4,14 @@
 import { chatWebSocket } from "./chat/hub";
 import { getDb } from "./db";
 import { chatSocketRoute, joinRoomRoute, listMessagesRoute, myRoomRoute } from "./routes/chat";
-import { answerStation, askConductor, createPlan, getPlan } from "./routes/conductor";
+import {
+  answerStation,
+  askConductor,
+  createPlan,
+  evaluateProgress,
+  getPlan,
+  setTimer,
+} from "./routes/conductor";
 import { health } from "./routes/health";
 import { createUserRoutes } from "./routes/users";
 import { mongoUserRepo } from "./users-repo";
@@ -25,7 +32,9 @@ const server = Bun.serve({
     "/api/conductor/plans": { POST: createPlan },
     "/api/conductor/plans/:id": { GET: getPlan },
     "/api/conductor/stations/:stationId/answer": { POST: answerStation },
+    "/api/conductor/stations/:stationId/evaluate": { POST: evaluateProgress },
     "/api/conductor/ask": { POST: askConductor },
+    "/api/conductor/timer": { POST: setTimer },
     "/api/chat/room": { POST: myRoomRoute },
     "/api/chat/rooms/join": { POST: joinRoomRoute },
     "/api/chat/rooms/:roomId/messages": { GET: listMessagesRoute },
