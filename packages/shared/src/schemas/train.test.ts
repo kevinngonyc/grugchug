@@ -21,6 +21,24 @@ describe("trainStateSchema", () => {
   test("rejects an unknown phase", () => {
     expect(trainStateSchema.safeParse({ ...train, phase: "flying" }).success).toBe(false);
   });
+
+  test("accepts a train with speech and a clip", () => {
+    const speaking = {
+      ...train,
+      speech: { id: "s1", text: "All aboard!", audioUrl: "/voices/s1.mp3" },
+    };
+    expect(trainStateSchema.parse(speaking)).toEqual(speaking);
+  });
+
+  test("accepts speech without a clip", () => {
+    const speaking = { ...train, speech: { id: "s1", text: "All aboard!" } };
+    expect(trainStateSchema.parse(speaking)).toEqual(speaking);
+  });
+
+  test("rejects empty speech text", () => {
+    const result = trainStateSchema.safeParse({ ...train, speech: { id: "s1", text: "" } });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("worldSnapshotSchema", () => {
