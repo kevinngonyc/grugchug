@@ -676,8 +676,8 @@ test.each(["plan", "questions", "none"])(
     const body = await response.json();
     if (failure === "none") {
       expect(response.status).toBe(200);
-      expect(body.usedFallback).toBeUndefined();
-      expect(saved?.usedFallback).toBeUndefined();
+      expect("usedFallback" in body).toBe(false);
+      expect(saved).toBeDefined();
       expect(JSON.stringify(body)).not.toMatch(answerKeys);
     } else {
       expect(response.status).toBe(503);

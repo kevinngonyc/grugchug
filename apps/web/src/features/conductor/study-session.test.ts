@@ -187,24 +187,6 @@ describe("studyAll", () => {
     expect(useMaterialLibrary.getState().items).toHaveLength(2);
   });
 
-  test("a saved sample route is regenerated instead of reused", async () => {
-    addTwoMaterials();
-    useMaterialLibrary.getState().setPlanId("sample");
-    apiMocks.getPlan.mockResolvedValue({ ...plan, usedFallback: true });
-    apiMocks.createPlan.mockResolvedValue(plan);
-    await useStudySession.getState().studyAll();
-    expect(apiMocks.createPlan).toHaveBeenCalledTimes(1);
-    expect(useStudySession.getState().plan).toBe(plan);
-  });
-
-  test("sample content is shown but never remembered for reuse", async () => {
-    addTwoMaterials();
-    apiMocks.createPlan.mockResolvedValue({ ...plan, usedFallback: true });
-    await useStudySession.getState().studyAll();
-    expect(useStudySession.getState().plan?.usedFallback).toBe(true);
-    expect(useMaterialLibrary.getState().planId).toBeNull();
-  });
-
   test("shows the server's reason when the route cannot be built", async () => {
     const failure = new ConductorApiError(
       "AI provider unavailable: GROQ_FLASH_MODEL is not set",

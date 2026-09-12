@@ -144,12 +144,6 @@ function RouteSummary({ plan }: { plan: PublicRoutePlan }) {
           </li>
         ))}
       </ol>
-      {plan.usedFallback && (
-        <p role="alert" className="text-sm text-destructive">
-          Some content is a sample because generation failed. Regenerate the route to try your
-          materials again.
-        </p>
-      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <button
         type="button"

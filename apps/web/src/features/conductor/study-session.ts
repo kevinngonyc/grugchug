@@ -174,13 +174,13 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         plan = await getPlan(library.planId).catch(() => null);
       }
       if (revision !== sessionRevision) return;
-      if (!plan || plan.usedFallback) {
+      if (!plan) {
         plan = await createPlan({
           userId: getUserId(),
           materials: library.items.map((item) => item.material),
         });
         if (revision !== sessionRevision) return;
-        useMaterialLibrary.getState().setPlanId(plan.usedFallback ? null : plan.id);
+        useMaterialLibrary.getState().setPlanId(plan.id);
       }
       get().startSession(plan);
     } catch (error) {
