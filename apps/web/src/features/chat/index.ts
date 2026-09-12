@@ -1,14 +1,29 @@
-// Chat. Rooms you create and invite people into by link or code, with live
-// messages over a WebSocket and history from the API. It lives inside a study
-// session as an overlay over the scene — ChatOverlay is the whole surface —
-// and owns which room that overlay is showing. Identity here is a display name
-// plus a server-minted userId kept in localStorage; there is no friends list
-// and no presence, and this feature owns no session metrics.
+// Chat. One room, always: the app hands you yours on first load, and an invite
+// link is the only way into someone else's. Live messages over a WebSocket,
+// history from the API, and — because the socket is also what says you are
+// here — the roster of who is in the room right now.
+//
+// ChatOverlay is the whole visible surface: a bubble in the corner of a study
+// session that opens a panel over the scene. Identity is a display name plus a
+// server-minted userId kept in localStorage.
+//
+// Two threads cross this boundary, both driven from features/session and both
+// one-way: `reportFocus` pushes the study score in for the room to see, and
+// `useRoster` reads out who to draw a train for. Chat itself reads nothing
+// from the rest of the app.
 
-export type { ChatMessage, ChatRoom } from "@grugchug/shared";
-export { clearActiveRoomId, readActiveRoomId, writeActiveRoomId } from "./active-room";
+export type { ChatMessage, ChatPresenceMember, ChatRoom } from "@grugchug/shared";
+export { joinRoom } from "./api";
 export { ChatOverlay } from "./chat-overlay";
+export { reportFocus } from "./focus-link";
 export type { ChatIdentity } from "./identity";
-export { clearIdentity, readIdentity } from "./identity";
-export { JoinRoomView } from "./join-room-view";
+export {
+  clearIdentity,
+  defaultDisplayName,
+  identityFromMember,
+  readIdentity,
+  writeIdentity,
+} from "./identity";
+export { JoinRoomView } from "./join-view";
 export type { ChatLog } from "./message-log";
+export { useRoster } from "./roster";

@@ -31,6 +31,15 @@ describe("useWorld", () => {
     expect(useWorld.getState().trains.local).toBeUndefined();
   });
 
+  test("regroup counts up, so two arrivals are two events", () => {
+    const before = useWorld.getState().regroups;
+    useWorld.getState().regroup();
+    useWorld.getState().regroup();
+    // The scene watches for a change rather than reading a flag it would then
+    // have to clear, so what matters is that it never repeats a value.
+    expect(useWorld.getState().regroups).toBe(before + 2);
+  });
+
   test("removing the local train clears localTrainId", () => {
     const w = useWorld.getState();
     w.addTrain(local);

@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router";
-import { ChatOverlay } from "@/features/chat";
+import { ChatOverlay, readIdentity } from "@/features/chat";
 import { efficiencyFraction, reportAttention, useEfficiency } from "@/features/efficiency";
 import { Gaze } from "@/features/gaze";
 import { profileOwner, useProfile } from "@/features/profile";
 import { createVoiceAudio, TrainWorld } from "@/features/scene";
-import { useEfficiencyDrive } from "@/features/session";
+import { useEfficiencyDrive, usePartyTrains } from "@/features/session";
 import { useDepartureAnnouncer, useSpeechPlayer } from "@/features/speech";
 import { useWorld } from "@/features/world";
 import { SessionDevPanel } from "./session-dev-panel";
@@ -20,11 +20,13 @@ export function Session() {
   const load = useProfile((s) => s.load);
 
   // Gaze reports attention, the quiz will report its own signal, and this
-  // hands whatever they add up to on to the train.
+  // hands whatever they add up to on to the train — and to the room.
   useEfficiencyDrive();
   // Conductors: play each utterance's clip and announce departures.
   useSpeechPlayer(createVoiceAudio);
   useDepartureAnnouncer();
+  // Everyone in your chat room gets a train in the lane beside yours.
+  usePartyTrains();
 
   useEffect(() => {
     void load();
@@ -54,7 +56,11 @@ export function Session() {
   // has to be pushed onto a train that already exists.
   useEffect(() => {
     if (localTrainId === null || !user) return;
-    useWorld.getState().setOwner(localTrainId, profileOwner(user));
+    const owner = profileOwner(user);
+    useWorld.getState().setOwner(localTrainId, {
+      ...owner,
+      name: readIdentity()?.displayName ?? owner.name,
+    });
   }, [localTrainId, user]);
 
   const [params] = useSearchParams();

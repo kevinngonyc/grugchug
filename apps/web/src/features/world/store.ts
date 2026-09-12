@@ -4,14 +4,22 @@ import { create } from "zustand";
 export type WorldState = {
   trains: Record<string, TrainState>;
   localTrainId: string | null;
+  /**
+   * Bumped when the world should come to a standstill and start again — every
+   * train's speed drops to nothing and climbs back from there. Someone new
+   * arriving is what calls for it. A count rather than a flag, because what
+   * matters is that it changed, and two regroups in a row are two events.
+   */
+  regroups: number;
   addTrain: (train: TrainState) => void;
   removeTrain: (id: string) => void;
   setLocalTrainId: (id: string | null) => void;
+  regroup: () => void;
+  setOwner: (id: string, owner: TrainOwner) => void;
   setPhase: (id: string, phase: TrainPhase) => void;
   setEfficiency: (id: string, efficiency: number) => void;
   say: (id: string, text: string, audioUrl?: string) => void;
   clearSpeech: (id: string, speechId: string) => void;
-  setOwner: (id: string, owner: TrainOwner) => void;
   applySnapshot: (snapshot: Pick<WorldSnapshot, "trains">) => void;
 };
 
@@ -20,6 +28,7 @@ export type WorldState = {
 export const useWorld = create<WorldState>()((set) => ({
   trains: {},
   localTrainId: null,
+  regroups: 0,
 
   addTrain: (train) => set((s) => ({ trains: { ...s.trains, [train.id]: train } })),
 
@@ -34,6 +43,10 @@ export const useWorld = create<WorldState>()((set) => ({
     }),
 
   setLocalTrainId: (id) => set({ localTrainId: id }),
+
+  regroup: () => set((s) => ({ regroups: s.regroups + 1 })),
+
+  setOwner: (id, owner) => set((s) => patchTrain(s, id, { owner })),
 
   setPhase: (id, phase) => set((s) => patchTrain(s, id, { phase })),
 
@@ -60,8 +73,6 @@ export const useWorld = create<WorldState>()((set) => ({
       delete cleared.speech;
       return { trains: { ...s.trains, [id]: cleared } };
     }),
-
-  setOwner: (id, owner) => set((s) => patchTrain(s, id, { owner })),
 
   // Remote state wins for every train except ours; trains missing from the
   // snapshot are gone.

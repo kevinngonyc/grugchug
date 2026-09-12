@@ -1,6 +1,6 @@
 import { useGLTF } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { targetSpeed, useWorld } from "@/features/world";
 import {
@@ -14,6 +14,7 @@ import { Hills } from "./hills";
 import { Lane } from "./lane";
 import { ALL_MODEL_URLS } from "./models";
 import { createMotion, registerMotion, stepMotion, unregisterMotion } from "./motion";
+import { useRegroup } from "./use-regroup";
 import { VoiceListener } from "./voice-listener";
 
 for (const url of ALL_MODEL_URLS) useGLTF.preload(url);
@@ -38,12 +39,21 @@ export function TrainWorld() {
 }
 
 // All lanes share the local train's travel so rails and scenery never slide
-// against each other. Friends stay alongside regardless of efficiency.
+// against each other. Friend trains move relative to this shared world.
 function TravellingWorld() {
   const trainIds = useWorld(useShallow((s) => Object.keys(s.trains)));
   const leaderId = useWorld((s) => s.localTrainId ?? Object.keys(s.trains)[0]);
   const phase = useWorld((s) => (leaderId ? s.trains[leaderId]?.phase : undefined));
   const motion = useRef(createMotion());
+
+  // Someone new is here: the whole world stops dead and winds back up from
+  // nothing. Scroll is left alone — stations and scenery are placed against
+  // it, and it is the shared clock every lane is measured from.
+  useRegroup(
+    useCallback(() => {
+      motion.current.speed = 0;
+    }, []),
+  );
 
   useEffect(() => {
     if (!leaderId) return;

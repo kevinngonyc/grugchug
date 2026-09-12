@@ -1,5 +1,5 @@
 import { Navigate, useParams } from "react-router";
-import { JoinRoomView } from "../features/chat";
+import { JoinRoomView } from "@/features/chat";
 
 export function ChatJoin() {
   const { inviteCode } = useParams<{ inviteCode: string }>();

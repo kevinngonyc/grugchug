@@ -1,18 +1,7 @@
 // HTTP client for chat. Responses are parsed with the shared schemas so a
 // drifting API surfaces here rather than deep inside a component.
-import type {
-  ChatMessage,
-  ChatRoom,
-  MessagesResponse,
-  RoomListResponse,
-  RoomResponse,
-} from "@grugchug/shared";
-import {
-  CHAT_USER_HEADER,
-  messagesResponseSchema,
-  roomListResponseSchema,
-  roomResponseSchema,
-} from "@grugchug/shared";
+import type { ChatMessage, MessagesResponse, RoomResponse } from "@grugchug/shared";
+import { CHAT_USER_HEADER, messagesResponseSchema, roomResponseSchema } from "@grugchug/shared";
 
 /**
  * Just enough of a zod schema to validate a response. Structural rather than
@@ -58,15 +47,19 @@ async function request<T>(
   return schema.parse(await res.json());
 }
 
-export function createRoom(input: {
-  name: string;
+/**
+ * The one room this browser is in, created on the first call. Also how a
+ * first-time visitor gets a userId at all, and how a name set here last time
+ * is carried back onto the membership.
+ */
+export function myRoom(input: {
   displayName: string;
   userId: string | null;
 }): Promise<RoomResponse> {
-  return request("/chat/rooms", roomResponseSchema, {
+  return request("/chat/room", roomResponseSchema, {
     method: "POST",
     userId: input.userId,
-    body: JSON.stringify({ name: input.name, displayName: input.displayName }),
+    body: JSON.stringify({ displayName: input.displayName }),
   });
 }
 
@@ -80,15 +73,6 @@ export function joinRoom(input: {
     userId: input.userId,
     body: JSON.stringify({ inviteCode: input.inviteCode, displayName: input.displayName }),
   });
-}
-
-export async function listRooms(userId: string): Promise<ChatRoom[]> {
-  const body: RoomListResponse = await request("/chat/rooms", roomListResponseSchema, { userId });
-  return body.rooms;
-}
-
-export function getRoom(roomId: string, userId: string): Promise<RoomResponse> {
-  return request(`/chat/rooms/${encodeURIComponent(roomId)}`, roomResponseSchema, { userId });
 }
 
 export async function listMessages(
@@ -112,6 +96,10 @@ export function chatSocketUrl(roomId: string, userId: string): string {
   return `${protocol}//${window.location.host}/api/chat/ws?${params.toString()}`;
 }
 
+/**
+ * The only way into someone else's room: opening it joins and lands you in the
+ * session, so there is no code to read out and nothing to type.
+ */
 export function inviteLink(inviteCode: string): string {
   return `${window.location.origin}/chat/join/${inviteCode}`;
 }
