@@ -89,6 +89,7 @@ const speechOf = (id: string) => useWorld.getState().trains[id]?.speech;
 beforeEach(() => {
   useWorld.setState({ trains: {}, localTrainId: null });
   useWorld.getState().addTrain(local);
+  useWorld.getState().setLocalTrainId("local");
 });
 
 describe("createSpeechPlayer", () => {
@@ -178,19 +179,32 @@ describe("createSpeechPlayer", () => {
     expect(speechOf("local")).toBeUndefined();
   });
 
-  test("does not replay an utterance it has already seen", () => {
-    const { audios, player } = setup();
+  test("plays clips only for the local train; a friend's line is timed like text", () => {
+    const { audios, timers, player } = setup();
     useWorld.getState().addTrain(friend);
     useWorld.getState().setLocalTrainId("local");
     player.start();
     useWorld.getState().say("friend", "Hello there", "/voices/f.mp3");
-    const speech = speechOf("friend");
-    audios[0]?.fire("ended");
+    expect(audios).toHaveLength(0);
+    expect(timers.pending).toHaveLength(1);
+    expect(timers.pending[0]?.ms).toBe(speechDuration("Hello there"));
+    timers.runAll();
     expect(speechOf("friend")).toBeUndefined();
-    // A snapshot re-delivers the friend's train still carrying the same line.
+  });
+
+  test("does not replay an utterance it has already seen", () => {
+    const { audios, timers, player } = setup();
+    useWorld.getState().setLocalTrainId("local");
+    player.start();
+    useWorld.getState().say("local", "Hello there", "/voices/1.mp3");
+    const speech = speechOf("local");
+    audios[0]?.fire("ended");
+    expect(speechOf("local")).toBeUndefined();
+    // A snapshot re-delivers a friend's train carrying the same line.
     useWorld.getState().applySnapshot({ trains: { friend: { ...friend, speech } } });
     expect(speechOf("friend")?.id).toBe(speech?.id);
     expect(audios).toHaveLength(1);
+    expect(timers.pending).toHaveLength(0);
   });
 
   test("a train removed mid-line stops its clip", () => {
