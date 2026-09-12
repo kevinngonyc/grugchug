@@ -87,6 +87,25 @@ test("resumes webgazer when the tab becomes visible again", async () => {
   await waitFor(() => expect(resume).toHaveBeenCalled());
 });
 
+test("reports the debounced looking-away state on transitions, not every tick", async () => {
+  const onLookingAwayChange = mock();
+  render(<Gaze onLookingAwayChange={onLookingAwayChange} />);
+  await waitFor(() => expect(begin).toHaveBeenCalledTimes(1));
+
+  act(() => {
+    setHidden(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(onLookingAwayChange).toHaveBeenCalledTimes(1);
+  expect(onLookingAwayChange).toHaveBeenLastCalledWith(true);
+
+  // Hiding again while already away is not a new transition.
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(onLookingAwayChange).toHaveBeenCalledTimes(1);
+});
+
 test("StrictMode's double mount shares one tracker and ends it once", async () => {
   const { unmount } = render(
     <StrictMode>

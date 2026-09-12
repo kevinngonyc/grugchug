@@ -1,5 +1,5 @@
 import webgazer from "@webgazer-ts/core";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface GazeProps {
   /** How long you have to be turned away before we say so. Default: 2000ms. */
@@ -23,6 +23,14 @@ interface GazeProps {
    * `features/efficiency`, which folds it into an attention average).
    */
   onFacing?: (facing: boolean) => void;
+  /**
+   * Called whenever the debounced "looking away" message changes — the same
+   * value shown in this component's own text, gated by `awayThresholdMs` and
+   * the miss tolerance below, unlike `onFacing`'s raw per-tick reading. For a
+   * caller that wants to reflect the headline state (a border colour, an
+   * icon) without re-deriving the debouncing itself.
+   */
+  onLookingAwayChange?: (lookingAway: boolean) => void;
   /**
    * Show live head-pose numbers under the message, and WebGazer's own webcam
    * preview — video, cyan face mesh, feedback box — for tuning the thresholds
@@ -188,6 +196,7 @@ export function Gaze({
   pitchThresholdDown = 0.48,
   pitchThresholdUp = 0.2,
   onFacing,
+  onLookingAwayChange,
   debug = false,
 }: GazeProps) {
   const [lookingAway, setLookingAway] = useState(false);
@@ -198,10 +207,23 @@ export function Gaze({
   const widthHistoryRef = useRef<number[]>([]);
   const referenceWidthRef = useRef<number | null>(null);
   const missesRef = useRef(0);
-  // Held in a ref so a caller passing an inline arrow does not restart
+  // Held in refs so a caller passing an inline arrow does not restart
   // WebGazer — and the camera — on every render.
   const onFacingRef = useRef(onFacing);
   onFacingRef.current = onFacing;
+  const onLookingAwayChangeRef = useRef(onLookingAwayChange);
+  onLookingAwayChangeRef.current = onLookingAwayChange;
+  const lookingAwayRef = useRef(false);
+
+  // Only the transitions, not every tick that reaffirms the same value. Reads
+  // only refs and the stable setState, so this identity never changes.
+  const reportLookingAway = useCallback((value: boolean) => {
+    if (lookingAwayRef.current !== value) {
+      lookingAwayRef.current = value;
+      onLookingAwayChangeRef.current?.(value);
+    }
+    setLookingAway(value);
+  }, []);
 
   useEffect(() => {
     // Set before begin(): the renderers read these when they are created, so
@@ -227,7 +249,7 @@ export function Gaze({
 
     const markAway = () => {
       onFacingRef.current?.(false);
-      setLookingAway(true);
+      reportLookingAway(true);
     };
 
     const sample = () => {
@@ -309,7 +331,7 @@ export function Gaze({
       }
 
       const awayForMs = Date.now() - lastOnScreenAtRef.current;
-      setLookingAway(awayForMs >= awayThresholdMs);
+      reportLookingAway(awayForMs >= awayThresholdMs);
 
       if (debug) {
         setDebugInfo({
@@ -371,7 +393,14 @@ export function Gaze({
       stopSampling();
       releaseTracker();
     };
-  }, [awayThresholdMs, yawThreshold, pitchThresholdDown, pitchThresholdUp, debug]);
+  }, [
+    awayThresholdMs,
+    yawThreshold,
+    pitchThresholdDown,
+    pitchThresholdUp,
+    debug,
+    reportLookingAway,
+  ]);
 
   return (
     <div style={{ padding: 16, fontFamily: "monospace" }}>
