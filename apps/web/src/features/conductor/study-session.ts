@@ -51,6 +51,7 @@ interface StudySessionState {
   busy: boolean;
   error: string | null;
   historyId: string | null;
+  departed: boolean;
 
   hydrate: () => Promise<void>;
   startSession: (plan: PublicRoutePlan) => void;
@@ -82,6 +83,7 @@ function persist(state: StudySessionState): void {
     timerMessage: state.timerMessage,
     lastStretchMinutes: state.lastStretchMinutes,
     historyId: state.historyId,
+    departed: state.departed,
   });
 }
 
@@ -104,6 +106,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
   busy: false,
   error: null,
   historyId: null,
+  departed: false,
 
   hydrate: async () => {
     const saved = readSession();
@@ -118,6 +121,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         timerMessage: saved.timerMessage,
         lastStretchMinutes: saved.lastStretchMinutes,
         historyId: saved.historyId,
+        departed: saved.departed,
       });
     } catch {
       // The plan is gone or unreachable: behave like there is nothing to resume.
@@ -139,6 +143,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       busy: false,
       error: null,
       historyId: null,
+      departed: false,
     });
     persist(get());
   },
@@ -189,22 +194,24 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         busy: false,
       });
       persist(get());
+      useConductorUi.getState().closePanel();
 
       // A fresh route departs with the all-aboard line and opens its history
       // record; a departure after a passed station stays quiet, the pass line
-      // is still playing.
-      if (state.historyId === null) {
+      // is still playing. The timer and the panel are already committed above,
+      // so a slow (or failing) history POST here cannot hold up the UI, and
+      // `departed` flips regardless of whether the POST returned an id — a
+      // failed start must never be replayed on the next station.
+      if (!state.departed) {
         sayLine("startSession");
         const historyId = await startHistory({
           userId: getUserId(),
           planId: state.plan.id,
           stationTotal: state.plan.stations.length,
         });
-        set({ historyId });
+        set({ historyId, departed: true });
         persist(get());
       }
-
-      useConductorUi.getState().closePanel();
     } catch {
       set({ busy: false, error: "Could not start the timer. Try again." });
     }
@@ -341,7 +348,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
         results: progress,
       });
 
-      await recordHistory(state.historyId, {
+      // Fire and forget: a hung API must never delay the verdict on screen.
+      recordHistory(state.historyId, {
         stationIndex: state.stationIndex,
         stationId: station.id,
         passed,
@@ -357,7 +365,8 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       const nextIndex = state.stationIndex + 1;
       if (nextIndex >= state.plan.stations.length) {
         sayLine("greatSession");
-        await endHistory(state.historyId, "completed");
+        // Fire and forget: the completion screen must not wait on the network.
+        endHistory(state.historyId, "completed");
         set({ mode: "complete", stationFeedback: feedback, busy: false });
         persist(get());
         return;
@@ -392,6 +401,7 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       busy: false,
       error: null,
       historyId: null,
+      departed: false,
     });
   },
 }));

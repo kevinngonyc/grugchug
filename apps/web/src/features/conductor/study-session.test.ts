@@ -96,6 +96,7 @@ beforeEach(() => {
     busy: false,
     error: null,
     historyId: null,
+    departed: false,
   });
 });
 
@@ -214,12 +215,45 @@ describe("startStudying", () => {
   test("does not reopen a history record for a departure that follows a passed station", async () => {
     apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Next up" });
     useStudySession.getState().startSession(plan);
-    useStudySession.setState({ historyId: "h1" });
+    useStudySession.setState({ historyId: "h1", departed: true });
 
     await useStudySession.getState().startStudying();
 
     expect(historyMocks.startHistory).not.toHaveBeenCalled();
     expect(useStudySession.getState().historyId).toBe("h1");
+  });
+
+  test("does not replay the departure after a history POST failure", async () => {
+    apiMocks.setTimer.mockResolvedValue({ minutes: 5, message: "Go" });
+    historyMocks.startHistory.mockResolvedValue(null);
+    useStudySession.getState().startSession(plan);
+
+    await useStudySession.getState().startStudying();
+
+    expect(speechOf()?.text).toBe(VOICE_LINES.startSession.text);
+    expect(useStudySession.getState().historyId).toBeNull();
+    expect(useStudySession.getState().departed).toBe(true);
+    expect(historyMocks.startHistory).toHaveBeenCalledTimes(1);
+
+    // Reach the station and pass it: the next departure runs through the
+    // same startStudying path and must not replay the line or the POST.
+    useStudySession.setState({ mode: "counting", timerEndsAt: Date.now() - 1 });
+    useStudySession.getState().tick();
+    useStudySession.getState().chooseAnswer();
+    useStudySession.getState().setAnswer("q1", { type: "mcq", choiceIndex: 1 });
+    useStudySession.getState().setAnswer("q2", { type: "short", text: "because" });
+    apiMocks.submitAnswer.mockResolvedValue({
+      questionId: "irrelevant",
+      score: 1,
+      passed: true,
+      feedback: "Correct.",
+    });
+    apiMocks.evaluateProgress.mockResolvedValue({ passed: true, feedback: "Nice." });
+
+    await useStudySession.getState().submitAllAndFinish();
+
+    expect(historyMocks.startHistory).toHaveBeenCalledTimes(1);
+    expect(speechOf()?.text).toBe(VOICE_LINES.passQuiz.text);
   });
 });
 
@@ -301,7 +335,7 @@ describe("submitAllAndFinish", () => {
     apiMocks.setTimer.mockResolvedValue({ minutes: 8, message: "Next up" });
 
     useStudySession.getState().startSession(plan);
-    useStudySession.setState({ mode: "answering", historyId: "h1" });
+    useStudySession.setState({ mode: "answering", historyId: "h1", departed: true });
     answerEverything();
 
     await useStudySession.getState().submitAllAndFinish();
