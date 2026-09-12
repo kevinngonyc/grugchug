@@ -78,6 +78,16 @@ function pruneMaterialSets(db: Database, now: number): void {
   db.query("DELETE FROM plan_materials WHERE created_at < ?").run(cutoff);
 }
 
+// For a plan that already exists — e.g. one station's questions regenerated
+// after a failed attempt. saveRoutePlan is an INSERT and would violate the
+// primary key on an id already in the table.
+export async function updateRoutePlan(
+  plan: RoutePlan,
+  db: Database = getDatabase(),
+): Promise<void> {
+  db.query("UPDATE route_plans SET plan = ? WHERE id = ?").run(JSON.stringify(plan), plan.id);
+}
+
 export async function getRoutePlanById(
   id: string,
   db: Database = getDatabase(),

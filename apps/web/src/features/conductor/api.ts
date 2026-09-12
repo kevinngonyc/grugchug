@@ -10,6 +10,8 @@ import type {
   EvaluateProgressRequest,
   EvaluateProgressResponse,
   PublicRoutePlan,
+  PublicStation,
+  RegenerateStationRequest,
   SetTimerRequest,
   SetTimerResponse,
 } from "@grugchug/shared";
@@ -18,6 +20,7 @@ import {
   askResponseSchema,
   evaluateProgressResponseSchema,
   publicRoutePlanSchema,
+  publicStationSchema,
   setTimerResponseSchema,
 } from "@grugchug/shared";
 
@@ -40,6 +43,19 @@ export function submitAnswer(stationId: string, body: AnswerSubmission): Promise
   return request(
     `/conductor/stations/${encodeURIComponent(stationId)}/answer`,
     answerResultSchema,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+// A fresh set of questions for one station, after a failed attempt — so a
+// retry is an actual second attempt, not the same 8 questions again.
+export function regenerateStationQuestions(
+  stationId: string,
+  body: RegenerateStationRequest,
+): Promise<PublicStation> {
+  return request(
+    `/conductor/stations/${encodeURIComponent(stationId)}/regenerate`,
+    publicStationSchema,
     { method: "POST", body: JSON.stringify(body) },
   );
 }
