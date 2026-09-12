@@ -57,7 +57,14 @@ describe("RosterList", () => {
     const { container } = render(
       <RosterList
         members={[
-          { connectionId: "conn-1", userId: "u1", displayName: "Ada", efficiency: 0.5, avatar: "cat", journey },
+          {
+            connectionId: "conn-1",
+            userId: "u1",
+            displayName: "Ada",
+            efficiency: 0.5,
+            avatar: "cat",
+            journey,
+          },
           { connectionId: "conn-2", userId: "c", displayName: "Bob", efficiency: 0.5 },
           { connectionId: "conn-3", userId: "a", displayName: "Cy", efficiency: 0.5 },
         ]}
