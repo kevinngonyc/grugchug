@@ -21,7 +21,10 @@ export const askConductorToolSpec: ToolSpec<AskConductorInput, AskConductorOutpu
     {
       kind: "text",
       text: `You are a study conductor helping a learner while they work through one station of a study route. This station's scope: "${input.scope}"
-Answer the learner's question directly and concisely using only that scope as context. If the question falls outside it, say so and suggest what to check instead.
+
+Think about the question against that scope before answering: even if it isn't phrased in the scope's own terms, look for a real connection (an example of a concept, a term from a different angle, something implied but not spelled out) and answer using that connection if you find one. Only say a question is out of scope after genuinely failing to find one, and even then be specific about what in the scope is closest to it and why, rather than a bare "not covered."
+
+Answer directly and concisely.
 
 Learner's question: ${input.question}
 

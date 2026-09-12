@@ -116,6 +116,13 @@ export const CAMERA_POSITION: [number, number, number] = [-1.4, 4.4, -10];
 export const CAMERA_LOOK_AT: [number, number, number] = [-1.4, 1.2, 1];
 export const CAMERA_FOV = 35;
 
+// Conductor close-up: the camera eases here when the conductor panel opens,
+// framing the conductor (near CONDUCTOR_OFFSET) large on the left of the
+// frame so the study panel reads as filling the right. Tune by eye.
+export const CONDUCTOR_CAMERA_POSITION: [number, number, number] = [-0.9, 2.5, -2.6];
+export const CONDUCTOR_CAMERA_LOOK_AT: [number, number, number] = [-0.6, 2.0, 0];
+export const CAMERA_EASE = 3.5; // per second, same idiom as BOB_EASE
+
 // Sky and hills
 export const SKY_COLOR = "#bfe3ff";
 export const HILL_DEPTH = 28;

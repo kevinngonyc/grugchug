@@ -1,0 +1,22 @@
+// Shared class strings for the conductor panel — same values as
+// features/chat/ui.ts, kept separate rather than shared because features do
+// not import each other's internals. Both go away once shadcn components
+// are generated into src/components/ui.
+export const inputClass =
+  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none " +
+  "placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring";
+
+export const textareaClass = `${inputClass} min-h-24 resize-y`;
+
+export const buttonClass =
+  "inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm " +
+  "font-medium text-primary-foreground transition-opacity hover:opacity-90 " +
+  "disabled:pointer-events-none disabled:opacity-50";
+
+export const secondaryButtonClass =
+  "inline-flex items-center justify-center gap-2 rounded-md border border-input bg-background " +
+  "px-3 py-2 text-sm font-medium transition-colors hover:bg-accent " +
+  "disabled:pointer-events-none disabled:opacity-50";
+
+export const labelClass = "text-sm font-medium";
+export const cardClass = "rounded-lg border p-4";

@@ -84,10 +84,12 @@ export const materialSchema = z.discriminatedUnion("kind", [
 
 export type Material = z.infer<typeof materialSchema>;
 
-// Body of POST /api/conductor/plans.
+// Body of POST /api/conductor/plans. availableMinutes is optional — timing
+// is the LLM's call (plan-route sizes stations from the material itself
+// when it's omitted), not something the learner has to guess up front.
 export const createPlanRequestSchema = z.object({
   userId: z.string().min(1),
-  availableMinutes: z.number().int().min(1).max(600),
+  availableMinutes: z.number().int().min(1).max(600).optional(),
   material: materialSchema,
 });
 
@@ -135,3 +137,59 @@ export const askResponseSchema = z.object({
 });
 
 export type AskResponse = z.infer<typeof askResponseSchema>;
+
+// Why the caller wants a timer: the initial stretch at a fresh station, more
+// time on the station they're already at, or a break between stretches.
+export const timerReasonSchema = z.enum(["study", "keep-studying", "break"]);
+
+export type TimerReason = z.infer<typeof timerReasonSchema>;
+
+// Body of POST /api/conductor/timer. stationId resolves the scope server-side
+// (like askRequestSchema) rather than trusting a client-supplied scope
+// string; omit it for a break, which doesn't need station context.
+export const setTimerRequestSchema = z.object({
+  planId: z.string().min(1),
+  stationId: z.string().min(1).optional(),
+  reason: timerReasonSchema,
+  previousMinutes: z.number().positive().optional(),
+});
+
+export type SetTimerRequest = z.infer<typeof setTimerRequestSchema>;
+
+// Reply to POST /api/conductor/timer. minutes is capped well under a single
+// sitting so a bad response can't leave a learner waiting for hours.
+export const setTimerResponseSchema = z.object({
+  minutes: z.number().positive().max(180),
+  message: z.string(),
+});
+
+export type SetTimerResponse = z.infer<typeof setTimerResponseSchema>;
+
+// One question's outcome, summarized for evaluate-progress. Never the source
+// material — same minimal-context principle as grade-answer.
+export const progressResultSchema = z.object({
+  questionId: z.string().min(1),
+  prompt: z.string().min(1),
+  answerGiven: z.string(),
+  score: z.number().min(0).max(1),
+  feedback: z.string(),
+});
+
+export type ProgressResult = z.infer<typeof progressResultSchema>;
+
+// Body of POST /api/conductor/stations/:stationId/evaluate.
+export const evaluateProgressRequestSchema = z.object({
+  planId: z.string().min(1),
+  results: z.array(progressResultSchema).min(1),
+});
+
+export type EvaluateProgressRequest = z.infer<typeof evaluateProgressRequestSchema>;
+
+// Reply to POST /api/conductor/stations/:stationId/evaluate: can the learner
+// move on to the next station?
+export const evaluateProgressResponseSchema = z.object({
+  passed: z.boolean(),
+  feedback: z.string(),
+});
+
+export type EvaluateProgressResponse = z.infer<typeof evaluateProgressResponseSchema>;

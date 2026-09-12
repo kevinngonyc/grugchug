@@ -10,7 +10,10 @@ import { materialParts } from "../material-parts";
 
 export const planRouteInputSchema = z.object({
   material: materialSchema,
-  availableMinutes: z.number().int().min(1).max(600),
+  // Timing is the LLM's call, not the learner's — this is only ever set by
+  // an internal caller that already knows a target (none exist today). The
+  // web upload form no longer asks for it.
+  availableMinutes: z.number().int().min(1).max(600).optional(),
 });
 export type PlanRouteInput = z.infer<typeof planRouteInputSchema>;
 
@@ -35,11 +38,10 @@ export const planRouteToolSpec: ToolSpec<PlanRouteInput, PlanRouteOutput> = {
   prompt: (input) => [
     {
       kind: "text",
-      text: `You are building a study route through the attached material for a learner with about ${input.availableMinutes} minutes.
-Break the material into at most ${MAX_STATIONS} stations, each covering a distinct, contiguous chunk of the material in a sensible learning order. Never output more than ${MAX_STATIONS} stations.
+      text: `You are building a study route through the attached material${input.availableMinutes ? ` for a learner with about ${input.availableMinutes} minutes` : ""}.
+Break the material into at most ${MAX_STATIONS} stations, each covering a distinct, contiguous chunk of the material in a sensible learning order. Never output more than ${MAX_STATIONS} stations. Size each station's estimatedMinutes to how much it actually covers — dense or unfamiliar material earns more time, a light recap earns less.
 Respond with JSON only, matching exactly this shape:
-{"stations": [{"id": string, "index": number (0-based, in route order), "title": string, "scope": string (a precise description of what this station covers — detailed enough that someone could write quiz questions from it alone, without seeing the source material again), "estimatedMinutes": number}]}
-The sum of estimatedMinutes should roughly match the learner's available time.`,
+{"stations": [{"id": string, "index": number (0-based, in route order), "title": string, "scope": string (a precise description of what this station covers — detailed enough that someone could write quiz questions from it alone, without seeing the source material again), "estimatedMinutes": number}]}${input.availableMinutes ? "\nThe sum of estimatedMinutes should roughly match the learner's available time." : ""}`,
     },
     ...materialParts(input.material),
   ],
