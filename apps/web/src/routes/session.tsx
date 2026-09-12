@@ -4,7 +4,7 @@ import { ChatOverlay, readIdentity } from "@/features/chat";
 import { ConductorOverlay } from "@/features/conductor";
 import { efficiencyFraction } from "@/features/efficiency";
 import { FocusBoard } from "@/features/leaderboard";
-import { profileOwner, useProfile } from "@/features/profile";
+import { AvatarDialog, profileOwner, useAvatarPickerUi, useProfile } from "@/features/profile";
 import { createVoiceAudio, TrainWorld } from "@/features/scene";
 import { useEfficiencyDrive, useJourneyLink, usePartyTrains } from "@/features/session";
 import { useSpeechPlayer } from "@/features/speech";
@@ -54,8 +54,7 @@ export function Session() {
     w.setLocalTrainId(LOCAL_TRAIN_ID);
   }, [localTrainId, status, user]);
 
-  // The world store outlives route changes, so an avatar picked in Settings
-  // has to be pushed onto a train that already exists.
+  // Apply saved avatar changes to the passenger already riding in the scene.
   useEffect(() => {
     if (localTrainId === null || !user) return;
     const owner = profileOwner(user);
@@ -72,10 +71,11 @@ export function Session() {
     <div className="absolute inset-0">
       <TrainWorld />
       {dev ? <SessionDevPanel /> : null}
-      <FocusBoard />
+      <FocusBoard onSelectCharacter={() => useAvatarPickerUi.getState().setOpen(true)} />
       <FocusHud debug={dev} />
       <ChatOverlay />
       <ConductorOverlay />
+      <AvatarDialog />
     </div>
   );
 }

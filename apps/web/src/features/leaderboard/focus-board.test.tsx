@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useConductorUi } from "@/features/conductor";
 import { useWorld } from "@/features/world";
 import { FocusBoard } from "./focus-board";
@@ -46,4 +46,13 @@ test("steps aside while the conductor panel is open", () => {
   useConductorUi.setState({ open: true });
   const { container } = render(<FocusBoard />);
   expect(container.innerHTML).toBe("");
+});
+
+test("only the local avatar opens character selection", () => {
+  const onSelectCharacter = mock(() => {});
+  render(<FocusBoard onSelectCharacter={onSelectCharacter} />);
+  const buttons = within(screen.getByLabelText("Live focus")).getAllByRole("button");
+  expect(buttons).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Change your character" }));
+  expect(onSelectCharacter).toHaveBeenCalledTimes(1);
 });

@@ -28,7 +28,7 @@ through `src/features/<feature>/index.ts`.
 
 | Path | Responsibility |
 |---|---|
-| `src/app.tsx`, `src/routes/` | Dashboard, session, Settings, invite landing page, and redirects from old chat URLs |
+| `src/app.tsx`, `src/routes/` | Session-first app with no navbar: `/` and legacy `/settings` redirect to `/session`; history remains at `/dashboard`; invite landing page and old chat redirects |
 | `src/features/gaze/` | `@webgazer-ts/core` head-pose tracking; `Gaze` reports a per-sample `onFacing` boolean. One shared tracker per page (StrictMode's double mount does not start a second camera); its continuous detection loop keeps running, sampled every 200ms, with a short tolerance for a missed frame before it counts as looking away. Webcam preview and diagnostics are dev-only |
 | `src/features/typing/` | Shared `TypingSample` type export; no capture implementation yet |
 | `src/features/efficiency/` | One weighted, aging score from 0 to 100; attention averaging and source signals |
@@ -36,7 +36,7 @@ through `src/features/<feature>/index.ts`.
 | `src/features/conductor/` | Study session: upload materials, route of stations, timers, answering and grading; drives the local train's phase (`applyStudyPhase`), narrates through speech, reports quiz means to efficiency, records history, and renders `SessionHistory` on the Dashboard |
 | `src/features/leaderboard/` | `FocusBoard`, top-left: every rider's avatar ringed by live focus in a per-player colour, and a leaderboard of focused time. Reads the world store only; hidden while the conductor panel is open |
 | `src/features/world/` | Zustand train intent: owners, phases, efficiency, speech, local train ID, and regroup count. No three.js |
-| `src/features/profile/` | Loads/saves the browser's profile, defines the avatar catalog, and renders the Settings picker |
+| `src/features/profile/` | Loads/saves the browser's profile, defines the avatar catalog, and opens the in-session avatar dialog from the local passenger or focus avatar |
 | `src/features/speech/` | Voice-line registry, `sayLine` for events the world does not see and `sayText` for an unrecorded line, playback/fallback timing, and clearing finished utterances. Narrating the local train's journey belongs to the study session, not this feature |
 | `src/features/scene/` | Train models, shared scrolling environment, relative companion motion, stations, sprites, speech bubbles, and positional audio output. Reads world state only |
 | `src/features/chat/` | The current room, messages, identity/display name, invite links, socket lifecycle, and a live roster whose rows show each rider's avatar and journey status |
@@ -96,6 +96,12 @@ avatar. Both routes validate IDs with the shared 1–64 character `userIdSchema`
 The frontend bounds each request to three seconds so a stalled API cannot
 prevent the local train from boarding. Failed loads use Poku; failed saves
 retain the last loaded profile.
+
+Clicking the local passenger opens `AvatarDialog`; the local focus portrait
+also opens it via a keyboard-accessible button. Picking an avatar saves the
+profile before changing the passenger and broadcasting presence. Failed saves
+keep the previous avatar and offer a retry. The scene only requests the UI;
+profile owns saving and the session route applies the saved owner.
 
 The selectable avatars are Conductor, Bonbon, Poku, Cat, and Doug. They are
 passengers on the carriage. Every locomotive separately uses the fixed

@@ -43,6 +43,13 @@ All from the repo root.
 
 ## Conventions
 
+- The app opens at `/session` without a navbar; `/` and legacy `/settings`
+  redirect there. Session history remains at `/dashboard`.
+- Clicking the local passenger or local focus avatar opens profile's avatar
+  dialog. Scene requests UI through profile's public surface; profile saves,
+  then the session route applies the selected sprite and presence relays it.
+  Companion passengers are not editable. Failed saves keep the previous pick.
+
 - Bun for everything: install, run, test, bundle. No npm, no node scripts.
 - TypeScript strict everywhere; `tsconfig.base.json` is the single base.
 - Web code is organized by feature under `src/features/`. Each feature has an
