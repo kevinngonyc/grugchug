@@ -53,7 +53,7 @@ const server = Bun.serve({
     "/api/conductor/ask": { POST: askConductor },
     "/api/conductor/timer": { POST: setTimer },
     "/api/chat/room": { POST: myRoomRoute },
-    "/api/chat/invite-host": { GET: (_req, server) => inviteHost(server.hostname) },
+    "/api/chat/invite-host": { GET: (req, server) => inviteHost(req, server.hostname) },
     "/api/chat/rooms/join": { POST: joinRoomRoute },
     "/api/chat/rooms/:roomId/messages": { GET: listMessagesRoute },
     "/api/chat/ws": { GET: chatSocketRoute },

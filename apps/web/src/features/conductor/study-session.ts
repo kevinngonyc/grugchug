@@ -76,6 +76,7 @@ interface StudySessionState {
   chooseAnswer: () => Promise<void>;
   chooseKeepStudying: () => Promise<void>;
   chooseBreak: () => Promise<void>;
+  endBreak: () => void;
   setAnswer: (questionId: string, answer: Answer) => void;
   submitAllAndFinish: () => Promise<void>;
   quit: () => void;
@@ -296,9 +297,10 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     }
   },
 
-  // Dev panel only: end the running countdown now instead of in however many
-  // real minutes the model chose, through the same tick a timer that ran out
-  // takes — so a station and its quiz can be tried without waiting one out.
+  // End the running countdown now instead of in however many real minutes the
+  // model chose, through the same tick a timer that ran out takes. On the
+  // studying screen this is how a station and its quiz are reached without
+  // sitting out a stretch nobody has time for; the dev panel uses it too.
   skipTimer: () => {
     const { mode } = get();
     if (mode !== "counting" && mode !== "on-break") return;
@@ -412,6 +414,15 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
       if (revision !== sessionRevision) return;
       set({ busy: false, error: "Could not start a break. Try again." });
     }
+  },
+
+  // The break's length is the model's suggestion, not a sentence. Ending one
+  // early runs the same tick a break that ran out does, so it picks the
+  // stretch up or returns to the station by the one code path.
+  endBreak: () => {
+    if (get().mode !== "on-break") return;
+    set({ timerEndsAt: Date.now() });
+    get().tick();
   },
 
   setAnswer: (questionId, answer) => {
