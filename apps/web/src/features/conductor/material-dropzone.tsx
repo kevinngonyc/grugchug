@@ -92,7 +92,7 @@ export function MaterialDropzone() {
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
       <label
         htmlFor="conductor-files"
         onDragOver={(e) => {
@@ -102,8 +102,8 @@ export function MaterialDropzone() {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={
-          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 " +
-          `border-dashed px-4 py-10 text-center transition-colors ${
+          "flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl " +
+          `border-2 border-dashed px-4 py-10 text-center transition-colors ${
             dragging ? "border-primary bg-primary/5" : "border-border/70 hover:bg-accent/40"
           }`
         }

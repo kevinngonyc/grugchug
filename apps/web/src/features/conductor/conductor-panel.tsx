@@ -299,9 +299,9 @@ function StationArrival({ plan }: { plan: PublicRoutePlan }) {
         type="button"
         className={buttonClass}
         disabled={busy}
-        onClick={() => useStudySession.getState().chooseAnswer()}
+        onClick={() => void useStudySession.getState().chooseAnswer()}
       >
-        Answer questions
+        {busy ? "Preparing questions…" : "Answer questions"}
       </button>
       <button
         type="button"

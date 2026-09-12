@@ -25,7 +25,10 @@ import {
   type Material,
   PASS_THRESHOLD,
   publicRoutePlanSchema,
+  publicStationSchema,
+  type Question,
   type RoutePlan,
+  regenerateStationRequestSchema,
   type Station,
   setTimerRequestSchema,
   setTimerResponseSchema,
@@ -36,6 +39,7 @@ import {
   getRoutePlanById,
   savePlanMaterials,
   saveRoutePlan,
+  updateRoutePlan,
 } from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
 import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
@@ -85,6 +89,30 @@ const defaultCreatePlanDeps: CreatePlanDeps = {
   },
 };
 
+type Generated = { ok: true; questions: Question[] } | { ok: false; reason: string };
+
+// Shared by a fresh plan's stations and by regenerating one station after a
+// failed attempt: run generate-questions, refuse a fixture as real content,
+// and rewrite ids to belong to this station.
+async function generateStationQuestions(
+  stationId: string,
+  scope: string,
+  materials: readonly Material[],
+  runGenerateQuestions: CreatePlanDeps["runGenerateQuestions"],
+): Promise<Generated> {
+  try {
+    const result = await runGenerateQuestions({ scope, materials: [...materials] });
+    const reason = fallbackReason(result);
+    if (reason) return { ok: false, reason };
+    return {
+      ok: true,
+      questions: result.output.questions.map((q, qi) => ({ ...q, id: `${stationId}-q${qi + 1}` })),
+    };
+  } catch (error) {
+    return { ok: false, reason: describeError(error) };
+  }
+}
+
 type BuiltStation = { ok: true; station: Station } | { ok: false; reason: string };
 
 async function buildStation(
@@ -92,23 +120,14 @@ async function buildStation(
   materials: readonly Material[],
   runGenerateQuestions: CreatePlanDeps["runGenerateQuestions"],
 ): Promise<BuiltStation> {
-  try {
-    const result = await runGenerateQuestions({ scope: skeleton.scope, materials: [...materials] });
-    const reason = fallbackReason(result);
-    if (reason) return { ok: false, reason };
-    return {
-      ok: true,
-      station: {
-        ...skeleton,
-        questions: result.output.questions.map((q, qi) => ({
-          ...q,
-          id: `${skeleton.id}-q${qi + 1}`,
-        })),
-      },
-    };
-  } catch (error) {
-    return { ok: false, reason: describeError(error) };
-  }
+  const generated = await generateStationQuestions(
+    skeleton.id,
+    skeleton.scope,
+    materials,
+    runGenerateQuestions,
+  );
+  if (!generated.ok) return generated;
+  return { ok: true, station: { ...skeleton, questions: generated.questions } };
 }
 
 // The real logic, parameterized over its dependencies so tests can inject
@@ -249,6 +268,75 @@ export async function answerStationWithDeps(
 // POST /api/conductor/stations/:stationId/answer
 export function answerStation(req: WithParams<"stationId">): Promise<Response> {
   return answerStationWithDeps(req, defaultAnswerStationDeps);
+}
+
+export interface RegenerateStationDeps extends PlanLookupDeps {
+  getMaterials: typeof getPlanMaterials;
+  runGenerateQuestions: typeof generateQuestionsTool.run;
+  save: typeof updateRoutePlan;
+}
+
+const defaultRegenerateStationDeps: RegenerateStationDeps = {
+  get: getRoutePlanById,
+  getMaterials: getPlanMaterials,
+  runGenerateQuestions: generateQuestionsTool.run,
+  save: updateRoutePlan,
+};
+
+// A retry after a failed attempt should be an actual second attempt, not the
+// same 8 questions read back from memory: a fresh set for this station,
+// persisted in place so a reload or a later GET sees the same questions the
+// learner is now looking at.
+export async function regenerateStationWithDeps(
+  req: WithParams<"stationId">,
+  deps: RegenerateStationDeps,
+): Promise<Response> {
+  const body = await readBody(req, regenerateStationRequestSchema);
+  if (!body.ok) return body.response;
+  const { planId } = body.data;
+
+  const found = await loadPlan(planId, deps.get);
+  if (!found.ok) return found.response;
+
+  const stationIndex = found.plan.stations.findIndex((s) => s.id === req.params.stationId);
+  const station = stationIndex === -1 ? undefined : found.plan.stations[stationIndex];
+  if (!station) return Response.json({ error: "station not found" }, { status: 404 });
+
+  const materials = await deps.getMaterials(planId).catch(() => null);
+  if (!materials) {
+    return Response.json(
+      { error: "This plan has no stored material to regenerate questions from." },
+      { status: 422 },
+    );
+  }
+
+  const generated = await generateStationQuestions(
+    station.id,
+    station.scope,
+    materials,
+    deps.runGenerateQuestions,
+  );
+  if (!generated.ok) return unavailable(generated.reason);
+
+  const updatedStation: Station = { ...station, questions: generated.questions };
+  const stations = [...found.plan.stations];
+  stations[stationIndex] = updatedStation;
+
+  try {
+    await deps.save({ ...found.plan, stations });
+  } catch (error) {
+    return Response.json(
+      { error: `failed to save route plan: ${describeError(error)}` },
+      { status: 500 },
+    );
+  }
+
+  return Response.json(publicStationSchema.parse(updatedStation));
+}
+
+// POST /api/conductor/stations/:stationId/regenerate
+export function regenerateStation(req: WithParams<"stationId">): Promise<Response> {
+  return regenerateStationWithDeps(req, defaultRegenerateStationDeps);
 }
 
 export interface AskConductorDeps extends PlanLookupDeps {

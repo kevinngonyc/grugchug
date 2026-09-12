@@ -145,6 +145,15 @@ export const answerSubmissionSchema = z.object({
 
 export type AnswerSubmission = z.infer<typeof answerSubmissionSchema>;
 
+// Body of POST /api/conductor/stations/:stationId/regenerate: a fresh set of
+// questions for this station after a failed attempt, so retrying is an
+// actual second attempt rather than the same 8 questions from memory.
+export const regenerateStationRequestSchema = z.object({
+  planId: z.string().min(1),
+});
+
+export type RegenerateStationRequest = z.infer<typeof regenerateStationRequestSchema>;
+
 // Grading outcome for one question. score is 0..1.
 export const answerResultSchema = z.object({
   questionId: z.string(),
