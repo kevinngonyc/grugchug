@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { GeminiProvider } from "./gemini";
 import { GroqProvider } from "./groq";
-import { describeLlmConfig, getProvider } from "./index";
+import { describeLlmConfig, getProvider, vendorsToTry } from "./index";
 
 const keys = [
   "LLM_PROVIDER",
@@ -47,6 +47,17 @@ describe("getProvider", () => {
     expect(flash.model).toBe("groq-flash-model");
   });
 
+  test("can construct the other vendor without switching LLM_PROVIDER", () => {
+    delete process.env.LLM_PROVIDER;
+    process.env.GROQ_API_KEY = "fake";
+    process.env.GROQ_FLASH_MODEL = "groq-flash-model";
+
+    const flash = getProvider("flash", "groq");
+
+    expect(flash).toBeInstanceOf(GroqProvider);
+    expect(flash.model).toBe("groq-flash-model");
+  });
+
   test("throws when the required env var is missing, rather than guessing a model", () => {
     delete process.env.LLM_PROVIDER;
     process.env.GEMINI_API_KEY = "fake";
@@ -79,5 +90,37 @@ describe("describeLlmConfig", () => {
     expect(describeLlmConfig({ LLM_PROVIDER: "Groq " })).toContain(
       'LLM_PROVIDER="Groq" not recognised',
     );
+  });
+
+  test("names the other vendor when it is fully configured", () => {
+    const line = describeLlmConfig({
+      LLM_PROVIDER: "gemini",
+      GEMINI_API_KEY: "gk",
+      GEMINI_FLASH_MODEL: "gf",
+      GEMINI_PRO_MODEL: "gp",
+      GROQ_API_KEY: "qk",
+      GROQ_FLASH_MODEL: "qf",
+      GROQ_PRO_MODEL: "qp",
+    });
+    expect(line).toContain("fallback=groq");
+  });
+});
+
+describe("vendorsToTry", () => {
+  test("is just the primary when the other vendor is incomplete", () => {
+    expect(vendorsToTry({ LLM_PROVIDER: "gemini", GROQ_API_KEY: "only-a-key" })).toEqual([
+      "gemini",
+    ]);
+  });
+
+  test("appends the other vendor when its key and both models are set", () => {
+    expect(
+      vendorsToTry({
+        LLM_PROVIDER: "gemini",
+        GROQ_API_KEY: "qk",
+        GROQ_FLASH_MODEL: "qf",
+        GROQ_PRO_MODEL: "qp",
+      }),
+    ).toEqual(["gemini", "groq"]);
   });
 });

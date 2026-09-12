@@ -6,7 +6,14 @@
 // Callers that must not pass a fixture off as real content check
 // fallbackReason() and refuse instead (see routes/conductor.ts createPlan).
 import type { z } from "zod";
-import { getProvider, type LLMProvider, type ProviderPart, type Tier } from "./provider";
+import {
+  getProvider,
+  type LLMProvider,
+  type ProviderPart,
+  type Tier,
+  type Vendor,
+  vendorsToTry,
+} from "./provider";
 
 // Same material + same params should not re-hit the LLM. Keyed on tool name
 // plus the validated input, JSON-stringified. Process-lifetime only, and
@@ -33,7 +40,7 @@ export interface ToolSpec<TInput, TOutput> {
   temperature?: number;
   /** Builds the model request from validated input. May include a document part for PDFs. */
   prompt(input: TInput): ProviderPart[];
-  /** Used only when every provider attempt (flash retries + one pro escalation) has failed. */
+  /** Used only when every vendor attempt (flash retries + one pro escalation) has failed. */
   fixture(input: TInput): TOutput;
   /** Per-call timeout override. Defaults to DEFAULT_TIMEOUT_MS. */
   timeoutMs?: number;
@@ -78,7 +85,7 @@ export interface Tool<TInput, TOutput> extends ToolSpec<TInput, TOutput> {
 // Resolves a provider for a tier. A real dependency in production
 // (provider/index.ts's getProvider), swappable in tests for a fake that
 // never touches the network.
-export type ProviderResolver = (tier: Tier) => LLMProvider;
+export type ProviderResolver = (tier: Tier, vendor?: Vendor) => LLMProvider;
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -295,13 +302,53 @@ function warnFailed(entry: TraceEntry): void {
   );
 }
 
+type BoundResolver = (tier: Tier) => LLMProvider;
+
+async function tryVendor<TInput, TOutput>(
+  spec: ToolSpec<TInput, TOutput>,
+  resolve: BoundResolver,
+  basePrompt: ProviderPart[],
+  timeoutMs: number,
+  trace: TraceEntry[],
+): Promise<{ ok: true; output: TOutput } | { ok: false; error: string }> {
+  let lastError: string | undefined;
+  for (let attempt = 1; attempt <= MAX_FLASH_RETRIES + 1; attempt++) {
+    const parts =
+      attempt === 1 || lastError === undefined
+        ? basePrompt
+        : [...basePrompt, feedbackPart(lastError)];
+    const result = await attemptOnce(resolve, spec, parts, timeoutMs, "flash", attempt, false);
+    trace.push(result.trace);
+    if (result.ok) return { ok: true, output: result.output };
+    warnFailed(result.trace);
+    lastError = result.trace.error;
+  }
+
+  const escalation = await attemptOnce(
+    resolve,
+    spec,
+    lastError === undefined ? basePrompt : [...basePrompt, feedbackPart(lastError)],
+    timeoutMs,
+    "pro",
+    1,
+    true,
+  );
+  trace.push(escalation.trace);
+  if (escalation.ok) return { ok: true, output: escalation.output };
+  warnFailed(escalation.trace);
+  return { ok: false, error: escalation.trace.error ?? "escalation failed" };
+}
+
 // The testable core: everything above minus how a provider is obtained.
 // defineTool()'s run() calls this with the real getProvider; tests pass a
-// fake resolver instead so nothing hits the network.
+// fake resolver instead so nothing hits the network. `vendors` defaults to
+// the primary only so offline tests do not pick up a second vendor from
+// whoever's .env; production passes vendorsToTry().
 export async function runTool<TInput, TOutput>(
   spec: ToolSpec<TInput, TOutput>,
   rawInput: TInput,
   resolveProvider: ProviderResolver,
+  vendors: readonly Vendor[] = ["gemini"],
 ): Promise<ToolRunResult<TOutput>> {
   const input = spec.inputSchema.parse(rawInput);
   const useCache = spec.cache !== false;
@@ -318,50 +365,28 @@ export async function runTool<TInput, TOutput>(
   const timeoutMs = spec.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const basePrompt = spec.prompt(input);
   const trace: TraceEntry[] = [];
+  let lastError = "every attempt failed";
 
-  let lastError: string | undefined;
-  for (let attempt = 1; attempt <= MAX_FLASH_RETRIES + 1; attempt++) {
-    const parts =
-      attempt === 1 || lastError === undefined
-        ? basePrompt
-        : [...basePrompt, feedbackPart(lastError)];
-    const result = await attemptOnce(
-      resolveProvider,
+  for (let i = 0; i < vendors.length; i++) {
+    const vendor = vendors[i];
+    if (vendor === undefined) continue;
+    if (i > 0) warn(`${spec.name}: ${vendors[i - 1]} exhausted, trying ${vendor}`);
+    const outcome = await tryVendor(
       spec,
-      parts,
+      (tier) => resolveProvider(tier, vendor),
+      basePrompt,
       timeoutMs,
-      "flash",
-      attempt,
-      false,
+      trace,
     );
-    trace.push(result.trace);
-    if (result.ok) {
-      if (useCache) remember(cacheKey, { output: result.output, trace: result.trace });
-      return { output: result.output, trace, fellBackToFixture: false };
+    if (outcome.ok) {
+      const last = trace[trace.length - 1];
+      if (useCache && last) remember(cacheKey, { output: outcome.output, trace: last });
+      return { output: outcome.output, trace, fellBackToFixture: false };
     }
-    warnFailed(result.trace);
-    lastError = result.trace.error;
+    lastError = outcome.error;
   }
 
-  // One escalation to the pro tier of the same tool. No further retries, no
-  // further escalation past this.
-  const escalation = await attemptOnce(
-    resolveProvider,
-    spec,
-    lastError === undefined ? basePrompt : [...basePrompt, feedbackPart(lastError)],
-    timeoutMs,
-    "pro",
-    1,
-    true,
-  );
-  trace.push(escalation.trace);
-  if (escalation.ok) {
-    if (useCache) remember(cacheKey, { output: escalation.output, trace: escalation.trace });
-    return { output: escalation.output, trace, fellBackToFixture: false };
-  }
-  warnFailed(escalation.trace);
-
-  return fallback(spec, input, trace, "pro", escalation.trace.error ?? "escalation failed");
+  return fallback(spec, input, trace, "pro", lastError);
 }
 
 export function defineTool<TInput, TOutput>(
@@ -369,6 +394,6 @@ export function defineTool<TInput, TOutput>(
 ): Tool<TInput, TOutput> {
   return {
     ...spec,
-    run: (input) => runTool(spec, input, getProvider),
+    run: (input) => runTool(spec, input, getProvider, vendorsToTry()),
   };
 }

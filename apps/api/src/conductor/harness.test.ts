@@ -123,6 +123,37 @@ describe("runTool", () => {
     expect(result.trace.at(-1)).toMatchObject({ tier: "pro", escalated: true, ok: true });
   });
 
+  test("after the primary vendor is exhausted, tries the next vendor before the fixture", async () => {
+    const spec = makeSpec();
+    const seen: Array<{ vendor?: string; tier: Tier }> = [];
+    const resolve = (tier: Tier, vendor?: string): LLMProvider => {
+      seen.push({ vendor, tier });
+      if (vendor === "groq" && tier === "flash") {
+        return fakeProvider("groq", "groq-flash", '{"answer": 11}');
+      }
+      return {
+        provider: vendor === "groq" ? "groq" : "gemini",
+        model: `${vendor ?? "gemini"}-${tier}`,
+        generate: async () => ({
+          text: "garbage",
+          provider: vendor === "groq" ? "groq" : "gemini",
+          model: `${vendor ?? "gemini"}-${tier}`,
+        }),
+      };
+    };
+
+    const result = await runTool(spec, { q: "unique-vendor-fallback-case" }, resolve, [
+      "gemini",
+      "groq",
+    ]);
+
+    expect(result.output).toEqual({ answer: 11 });
+    expect(result.fellBackToFixture).toBe(false);
+    expect(seen.filter((c) => c.vendor === "gemini")).toHaveLength(4);
+    expect(seen.some((c) => c.vendor === "groq" && c.tier === "flash")).toBe(true);
+    expect(result.trace.at(-1)).toMatchObject({ provider: "groq", tier: "flash", ok: true });
+  });
+
   test("falls back to the fixture when both flash retries and the pro escalation fail", async () => {
     const spec = makeSpec();
     const resolve = (): LLMProvider => ({

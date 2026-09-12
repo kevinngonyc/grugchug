@@ -140,7 +140,9 @@ All from the repo root.
   status in the route summary and do not remember sample plans for reuse.
   Regenerate route bypasses a saved plan without deleting uploaded materials.
 - Conductor API tools use `conductor/harness.ts` and `provider/index.ts` for
-  validation, retries, provider/model selection, and fixture fallback. Each
+  validation, retries, provider/model selection, and fixture fallback. After
+  the `LLM_PROVIDER` vendor's flash retries and pro escalation fail, the
+  other vendor is tried when its key and both models are set. Each
   tool declares its persona in `system`, never in the user prompt. A fixture
   must never be saved or shown as the learner's content: createPlan returns
   503 with `fallbackReason` instead. Keep model names in environment
