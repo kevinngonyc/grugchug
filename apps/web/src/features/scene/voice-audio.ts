@@ -40,10 +40,33 @@ export function updateVoicePosition(trainId: string, position: Point): void {
   for (const output of outputs) output.updatePosition(trainId, position);
 }
 
+// Firefox has no positional AudioParams on AudioListener (positionX, forwardX,
+// upX…) — only the older setPosition()/setOrientation() methods — while
+// Chrome and Safari have both. Feature-detect per node rather than per
+// browser: PannerNode has the params everywhere, the listener does not.
+// This runs every frame once the context exists, so a throw here would take
+// the whole scene loop down with it.
 function setPosition(node: AudioListener | PannerNode, point: Point): void {
-  node.positionX.value = point.x;
-  node.positionY.value = point.y;
-  node.positionZ.value = point.z;
+  if (node.positionX) {
+    node.positionX.value = point.x;
+    node.positionY.value = point.y;
+    node.positionZ.value = point.z;
+  } else {
+    node.setPosition(point.x, point.y, point.z);
+  }
+}
+
+function setOrientation(listener: AudioListener, forward: Point, up: Point): void {
+  if (listener.forwardX) {
+    listener.forwardX.value = forward.x;
+    listener.forwardY.value = forward.y;
+    listener.forwardZ.value = forward.z;
+    listener.upX.value = up.x;
+    listener.upY.value = up.y;
+    listener.upZ.value = up.z;
+  } else {
+    listener.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+  }
 }
 
 export function createVoiceAudio() {
@@ -57,12 +80,11 @@ export function createVoiceAudio() {
     const listener = context.listener;
     setPosition(listener, position);
     const length = Math.hypot(forward.x, forward.y, forward.z) || 1;
-    listener.forwardX.value = forward.x / length;
-    listener.forwardY.value = forward.y / length;
-    listener.forwardZ.value = forward.z / length;
-    listener.upX.value = up.x;
-    listener.upY.value = up.y;
-    listener.upZ.value = up.z;
+    setOrientation(
+      listener,
+      { x: forward.x / length, y: forward.y / length, z: forward.z / length },
+      up,
+    );
   };
 
   // Resume on a gesture too, so a blocked first announcement can be retried
