@@ -296,9 +296,10 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     }
   },
 
-  // Dev panel only: end the running countdown now instead of in however many
-  // real minutes the model chose, through the same tick a timer that ran out
-  // takes — so a station and its quiz can be tried without waiting one out.
+  // End the running countdown now instead of in however many real minutes the
+  // model chose, through the same tick a timer that ran out takes. On the
+  // studying screen this is how a station and its quiz are reached without
+  // sitting out a stretch nobody has time for; the dev panel uses it too.
   skipTimer: () => {
     const { mode } = get();
     if (mode !== "counting" && mode !== "on-break") return;

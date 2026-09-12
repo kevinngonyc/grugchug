@@ -196,6 +196,15 @@ function TimerView() {
           ? "Enjoy the break — the conductor will check back in."
           : "The train will arrive at the next station on its own."}
       </p>
+      {mode === "counting" && (
+        <button
+          type="button"
+          className={`${secondaryButtonClass} mt-2`}
+          onClick={() => useStudySession.getState().skipTimer()}
+        >
+          Arrive now and take the quiz
+        </button>
+      )}
     </div>
   );
 }
