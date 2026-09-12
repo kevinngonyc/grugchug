@@ -1,6 +1,8 @@
-// The conductor's panel content. Stage B: upload material, see the route it
-// produces. The timer/station/answer flow is Stage C — this only proves the
-// upload round-trip and the visual shell.
+// The conductor's study-plan panel: upload material, see the route it
+// produces. Stage C wires an actual start/timer/station flow onto this
+// route — for now this only proves the upload round-trip. Plan state lives
+// in ConductorOverlay (the parent), not here, because the ask panel next to
+// this one needs it too.
 import type { PublicRoutePlan } from "@grugchug/shared";
 import { X } from "lucide-react";
 import { type FormEvent, useCallback, useState } from "react";
@@ -15,7 +17,12 @@ import {
   textareaClass,
 } from "./ui";
 
-type ConductorPanelProps = { onClose: () => void };
+type ConductorPanelProps = {
+  plan: PublicRoutePlan | null;
+  onPlanCreated: (plan: PublicRoutePlan) => void;
+  onStartOver: () => void;
+  onClose: () => void;
+};
 
 // data:<mime>;base64,<payload> — the API wants only the payload.
 function readFileAsBase64(file: File): Promise<string> {
@@ -35,11 +42,10 @@ function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
-export function ConductorPanel({ onClose }: ConductorPanelProps) {
+export function ConductorPanel({ plan, onPlanCreated, onStartOver, onClose }: ConductorPanelProps) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [availableMinutes, setAvailableMinutes] = useState(30);
-  const [plan, setPlan] = useState<PublicRoutePlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,14 +65,14 @@ export function ConductorPanel({ onClose }: ConductorPanelProps) {
           ? ({ kind: "pdf", base64: await readFileAsBase64(file) } as const)
           : ({ kind: "text", text } as const);
         const result = await createPlan({ userId: getUserId(), availableMinutes, material });
-        setPlan(result);
+        onPlanCreated(result);
       } catch (err) {
         setError(err instanceof ConductorApiError ? err.message : "Something went wrong.");
       } finally {
         setSubmitting(false);
       }
     },
-    [file, text, availableMinutes],
+    [file, text, availableMinutes, onPlanCreated],
   );
 
   return (
@@ -85,7 +91,7 @@ export function ConductorPanel({ onClose }: ConductorPanelProps) {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
         {plan ? (
-          <RouteSummary plan={plan} onStartOver={() => setPlan(null)} />
+          <RouteSummary plan={plan} onStartOver={onStartOver} />
         ) : (
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
