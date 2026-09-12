@@ -24,7 +24,7 @@ export function App() {
           </NavLink>
         ))}
       </nav>
-      <main className="flex flex-1 flex-col p-6">
+      <main className="relative flex flex-1 flex-col">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/session" element={<Session />} />
