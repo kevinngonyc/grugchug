@@ -447,7 +447,7 @@ describe("askConductor", () => {
       }),
       {
         get: async () => plan,
-        getMaterials: async (planId) => (planId === "p1" ? materials : null),
+        getMaterials: async (forPlan) => (forPlan.id === "p1" ? materials : null),
         runAsk: async (input) => {
           received = input;
           return toolResult({ answer: "b" });

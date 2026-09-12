@@ -26,6 +26,10 @@ describe("askConductorToolSpec", () => {
     expect(result.output.answer).toBe("Because chlorophyll absorbs red and blue.");
   });
 
+  test("is not cached: no two questions are alike, and a key would hash the whole material", () => {
+    expect(askConductorToolSpec.cache).toBe(false);
+  });
+
   test("prompts the model to look for a connection before declaring a question out of scope", () => {
     const parts = askConductorToolSpec.prompt({ scope: "Light and pigments", question: "y" });
     const text = parts.map((p) => (p.kind === "text" ? p.text : "")).join("\n");

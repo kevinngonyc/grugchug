@@ -32,10 +32,9 @@ import {
 } from "@grugchug/shared";
 import { fallbackReason } from "../conductor/harness";
 import {
-  getPlanMaterials,
+  getMaterialsForPlan,
   getRoutePlanById,
-  savePlanMaterials,
-  saveRoutePlan,
+  saveRoutePlanWithMaterials,
 } from "../conductor/store";
 import { askConductorTool } from "../conductor/tools/ask-conductor";
 import { evaluateProgressTool } from "../conductor/tools/evaluate-progress";
@@ -79,10 +78,7 @@ const defaultCreatePlanDeps: CreatePlanDeps = {
   runPlanRoute: planRouteTool.run,
   runGenerateQuestions: generateQuestionsTool.run,
   // The plan, and the files it came from for the TA to answer from later.
-  save: async (plan, materials) => {
-    await saveRoutePlan(plan);
-    await savePlanMaterials(plan.id, materials);
-  },
+  save: saveRoutePlanWithMaterials,
 };
 
 type BuiltStation = { ok: true; station: Station } | { ok: false; reason: string };
@@ -252,13 +248,13 @@ export function answerStation(req: WithParams<"stationId">): Promise<Response> {
 }
 
 export interface AskConductorDeps extends PlanLookupDeps {
-  getMaterials: typeof getPlanMaterials;
+  getMaterials: typeof getMaterialsForPlan;
   runAsk: typeof askConductorTool.run;
 }
 
 const defaultAskConductorDeps: AskConductorDeps = {
   get: getRoutePlanById,
-  getMaterials: getPlanMaterials,
+  getMaterials: getMaterialsForPlan,
   runAsk: askConductorTool.run,
 };
 
@@ -275,9 +271,9 @@ export async function askConductorWithDeps(
 
   const station = stationId ? found.plan.stations.find((s) => s.id === stationId) : undefined;
   const scope = station?.scope ?? found.plan.stations.map((s) => s.scope).join("\n");
-  // A plan built before materials were stored has none; the TA answers from
-  // the scope, as it always did.
-  const materials = await deps.getMaterials(planId).catch(() => null);
+  // A plan whose materials were never stored, or were pruned, has none; the
+  // TA answers from the scope, as it always did.
+  const materials = await deps.getMaterials(found.plan).catch(() => null);
 
   const result = await deps.runAsk({
     scope,
