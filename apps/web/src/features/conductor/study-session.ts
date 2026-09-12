@@ -17,7 +17,14 @@ import { create } from "zustand";
 import { useEfficiency } from "@/features/efficiency";
 import { sayLine, sayText } from "@/features/speech";
 import { getUserId } from "@/lib/user-id";
-import { createPlan, evaluateProgress, getPlan, setTimer, submitAnswer } from "./api";
+import {
+  createPlan,
+  evaluateProgress,
+  getPlan,
+  regenerateStationQuestions,
+  setTimer,
+  submitAnswer,
+} from "./api";
 import { endHistory, recordHistory, startHistory } from "./history";
 import { useMaterialLibrary } from "./material-library";
 import { ConductorApiError } from "./request";
@@ -65,7 +72,7 @@ interface StudySessionState {
   startStudying: () => Promise<void>;
   tick: () => void;
   skipTimer: () => void;
-  chooseAnswer: () => void;
+  chooseAnswer: () => Promise<void>;
   chooseKeepStudying: () => Promise<void>;
   chooseBreak: () => Promise<void>;
   setAnswer: (questionId: string, answer: Answer) => void;
@@ -298,9 +305,48 @@ export const useStudySession = create<StudySessionState>()((set, get) => ({
     get().tick();
   },
 
-  chooseAnswer: () => {
-    set({ mode: "answering", answers: {}, results: {}, stationFeedback: null });
-    persist(get());
+  // A fresh arrival goes straight to the station's existing questions. A
+  // retry — stationFeedback is only set right after a failed grading — gets
+  // a newly generated set for the same scope first: reusing the identical 8
+  // questions would let the learner pass by memorizing answers rather than
+  // by understanding the material.
+  chooseAnswer: async () => {
+    const revision = sessionRevision;
+    const state = get();
+    const isRetry = state.stationFeedback !== null;
+    if (!isRetry) {
+      set({ mode: "answering", answers: {}, results: {}, stationFeedback: null });
+      persist(get());
+      return;
+    }
+
+    const station = currentStation(state);
+    if (!state.plan || !station) return;
+    set({ busy: true, error: null });
+    try {
+      const freshStation = await regenerateStationQuestions(station.id, { planId: state.plan.id });
+      if (revision !== sessionRevision) return;
+      const stations = [...state.plan.stations];
+      stations[state.stationIndex] = freshStation;
+      set({
+        plan: { ...state.plan, stations },
+        mode: "answering",
+        answers: {},
+        results: {},
+        stationFeedback: null,
+        busy: false,
+      });
+      persist(get());
+    } catch (error) {
+      if (revision !== sessionRevision) return;
+      set({
+        busy: false,
+        error:
+          error instanceof ConductorApiError
+            ? error.message
+            : "Could not prepare new questions. Try again.",
+      });
+    }
   },
 
   chooseKeepStudying: async () => {

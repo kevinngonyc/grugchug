@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { openDatabase } from "../db";
 import { fixtureRoutePlan } from "./fixtures";
-import { getPlanMaterials, getRoutePlanById, savePlanMaterials, saveRoutePlan } from "./store";
+import {
+  getPlanMaterials,
+  getRoutePlanById,
+  savePlanMaterials,
+  saveRoutePlan,
+  updateRoutePlan,
+} from "./store";
 
 describe("route plan store", () => {
   test("saves and reads a plan back unchanged", async () => {
@@ -21,6 +27,16 @@ describe("route plan store", () => {
       "INSERT INTO route_plans (id, user_id, plan, created_at) VALUES ('old', 'u', '{\"id\":\"old\"}', 'x')",
     );
     expect(await getRoutePlanById("old", db)).toBeNull();
+  });
+
+  test("updateRoutePlan replaces an existing plan in place", async () => {
+    const db = openDatabase(":memory:");
+    await saveRoutePlan(fixtureRoutePlan, db);
+
+    const changed = { ...fixtureRoutePlan, totalEstimatedMinutes: 999 };
+    await updateRoutePlan(changed, db);
+
+    expect(await getRoutePlanById(fixtureRoutePlan.id, db)).toEqual(changed);
   });
 });
 

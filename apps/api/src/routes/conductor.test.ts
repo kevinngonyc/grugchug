@@ -15,6 +15,8 @@ import {
   type EvaluateProgressDeps,
   evaluateProgressWithDeps,
   getPlanWithDeps,
+  type RegenerateStationDeps,
+  regenerateStationWithDeps,
   setTimerWithDeps,
 } from "./conductor";
 
@@ -640,6 +642,132 @@ describe("evaluateProgress", () => {
         runEvaluate: async () => toolResult<EvaluateProgressOutput>({ feedback: "n/a" }),
       },
     );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("regenerateStation", () => {
+  const plan: RoutePlan = {
+    id: "p1",
+    userId: "u1",
+    materialHash: "h",
+    totalEstimatedMinutes: 10,
+    stations: [
+      {
+        id: "s1",
+        index: 0,
+        title: "One",
+        scope: "first half",
+        estimatedMinutes: 10,
+        questions: fourQuestions,
+      },
+      {
+        id: "s2",
+        index: 1,
+        title: "Two",
+        scope: "second half",
+        estimatedMinutes: 10,
+        questions: fourQuestions,
+      },
+    ],
+  };
+  const materials = [{ kind: "text" as const, text: "lecture one" }];
+  const freshQuestions: Question[] = [mcq("new1"), mcq("new2"), mcq("new3"), short("new4")];
+
+  function regenerate(
+    stationId: string,
+    body: unknown,
+    overrides: Partial<RegenerateStationDeps> = {},
+  ) {
+    const req = post(`/api/conductor/stations/${stationId}/regenerate`, body);
+    return regenerateStationWithDeps(Object.assign(req, { params: { stationId } }), {
+      get: async () => plan,
+      getMaterials: async () => materials,
+      runGenerateQuestions: async () =>
+        toolResult<GenerateQuestionsOutput>({ questions: freshQuestions }),
+      save: async () => {},
+      ...overrides,
+    });
+  }
+
+  test("replaces the station's questions with a fresh set from the stored material, and persists it", async () => {
+    let saved: RoutePlan | undefined;
+    const res = await regenerate(
+      "s1",
+      { planId: "p1" },
+      {
+        save: async (p) => {
+          saved = p;
+        },
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe("s1");
+    expect(body.questions.map((q: { id: string }) => q.id)).toEqual([
+      "s1-q1",
+      "s1-q2",
+      "s1-q3",
+      "s1-q4",
+    ]);
+    expect(JSON.stringify(body)).not.toMatch(answerKeys);
+    // Persisted in place: the other station, and everything else, untouched.
+    expect(saved?.stations[0]?.questions.map((q) => q.id)).toEqual([
+      "s1-q1",
+      "s1-q2",
+      "s1-q3",
+      "s1-q4",
+    ]);
+    expect(saved?.stations[1]).toEqual(plan.stations[1]);
+  });
+
+  test("422s when the plan has no stored material to regenerate from", async () => {
+    const res = await regenerate("s1", { planId: "p1" }, { getMaterials: async () => null });
+    expect(res.status).toBe(422);
+  });
+
+  test("refuses with 503 when generation falls back, and saves nothing", async () => {
+    let saved = false;
+    const res = await regenerate(
+      "s1",
+      { planId: "p1" },
+      {
+        runGenerateQuestions: async () => ({
+          ...toolResult<GenerateQuestionsOutput>({ questions: freshQuestions }),
+          fellBackToFixture: true,
+          trace: [
+            {
+              tool: "generate-questions",
+              provider: "none",
+              model: "none",
+              tier: "flash",
+              latencyMs: 0,
+              attempt: 1,
+              escalated: false,
+              cacheHit: false,
+              ok: false,
+              error: "GROQ_FLASH_MODEL is not set",
+            },
+          ],
+        }),
+        save: async () => {
+          saved = true;
+        },
+      },
+    );
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toContain("GROQ_FLASH_MODEL is not set");
+    expect(saved).toBe(false);
+  });
+
+  test("404s on an unknown station", async () => {
+    const res = await regenerate("nope", { planId: "p1" });
+    expect(res.status).toBe(404);
+  });
+
+  test("404s when the plan does not exist", async () => {
+    const res = await regenerate("s1", { planId: "missing" }, { get: async () => null });
     expect(res.status).toBe(404);
   });
 });
