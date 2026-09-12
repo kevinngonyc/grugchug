@@ -146,3 +146,24 @@ Pure `journeyLabel` lives beside `ridersLabel`.
 - A shared route for the room.
 - Persisting answers or questions; only verdicts and scores are kept.
 - Rich dashboard analytics beyond the session list.
+
+## Deviations (recorded after implementation)
+
+- Friends' stations (Task 7c): a companion train's motion is registered by
+  an effect inside `Train`, a child of `Lane`. If a friend's train first
+  mounts already `stopped` or `finished` — rather than transitioning into
+  that phase after joining — `Lane`'s station effect can run on the same
+  commit while `getMotion(trainId)` is still `undefined`, so it returns
+  without placing a platform or setting `stopTarget`. The companion then
+  cruises through where its platform should be. Because the effect's
+  dependency is `[phase, ...]`, this self-heals on that companion's *next*
+  phase change, once `getMotion` is populated — so a friend who joins already
+  at a station only shows a platform after their journey changes at least
+  once more. This was flagged as a known, scoped edge case rather than fixed.
+- `features/conductor/history.ts` does not log failures (no `console.error`
+  anywhere in the module): `startHistory`, `recordHistory`, and `endHistory`
+  fail silently so a missing API never blocks or interrupts a study session.
+  Only the read, `fetchHistory`, throws — that is what lets `SessionHistory`
+  render "History is unavailable right now." instead of a blank dashboard.
+  "Failures logged and swallowed" in the History section above overstates
+  this for the three write paths.

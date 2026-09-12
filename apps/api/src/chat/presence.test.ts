@@ -2,7 +2,7 @@
 // ever calls `subscribe`, `unsubscribe` and `send` on a socket, so a plain
 // object stands in for one and none of this needs a server or a database.
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import type { ServerChatEvent } from "@grugchug/shared";
+import type { ChatPresenceMember, ServerChatEvent } from "@grugchug/shared";
 import type { ServerWebSocket } from "bun";
 import { type ChatSocketData, chatWebSocket, newSocketData } from "./hub";
 
@@ -37,6 +37,12 @@ function close(socket: FakeSocket): void {
 function roster(socket: FakeSocket): string[] {
   const last = [...socket.sent].reverse().find((event) => event.type === "presence");
   return last?.type === "presence" ? last.members.map((member) => member.displayName) : [];
+}
+
+/** The full presence members as of this socket's most recent frame. */
+function presenceMembers(socket: FakeSocket): ChatPresenceMember[] {
+  const last = [...socket.sent].reverse().find((event) => event.type === "presence");
+  return last?.type === "presence" ? last.members : [];
 }
 
 let ada: FakeSocket;
@@ -85,6 +91,31 @@ test("a focus report reaches the room without spending the message budget", asyn
 
   const last = [...bob.sent].reverse().find((event) => event.type === "presence");
   expect(last?.type === "presence" && last.members[0]?.efficiency).toBe(0.49);
+  expect(bob.sent.some((event) => event.type === "error")).toBe(false);
+});
+
+test("a journey event reaches the room without spending the message budget", async () => {
+  open(ada);
+  open(bob);
+
+  for (let i = 0; i < 50; i++) {
+    await chatWebSocket.message(
+      ada.ws,
+      JSON.stringify({
+        type: "journey",
+        avatar: "cat",
+        journey: { state: "at-station", station: { index: 2, total: 6 } },
+      }),
+    );
+  }
+
+  const members = presenceMembers(bob);
+  const adaMember = members.find((member) => member.userId === "u1");
+  const bobMember = members.find((member) => member.userId === "u2");
+  expect(adaMember?.avatar).toBe("cat");
+  expect(adaMember?.journey).toEqual({ state: "at-station", station: { index: 2, total: 6 } });
+  expect(bobMember).not.toHaveProperty("avatar");
+  expect(bobMember).not.toHaveProperty("journey");
   expect(bob.sent.some((event) => event.type === "error")).toBe(false);
 });
 
