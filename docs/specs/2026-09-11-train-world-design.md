@@ -62,7 +62,11 @@ positions live in the scene.
 | `station.tsx` | Platform glb; terminus variant for `finished` |
 | `scenery.tsx` | Instanced trees and hills, recycled as they scroll off screen |
 | `character.tsx` | Billboarded 2D sprite from a URL |
-| `use-scroll.ts` | Integrates speed into a scroll offset each frame |
+| `track.tsx` | Recycled straight track segments |
+| `smoke.tsx` | Puff pool whose spawn rate follows speed |
+| `hills.tsx` | Shared far background, parallax off the local train |
+| `motion.ts` | Per-lane motion state in a ref, the eased-speed and braking step, and a registry so shared elements can read the local train |
+| `models.ts` | Model URLs |
 | `constants.ts` | Lane spacing, camera, station distance, speed limits. One scene unit is one meter |
 
 Behaviour:
