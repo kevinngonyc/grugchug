@@ -31,8 +31,19 @@ afterEach(() => {
   announcer = undefined;
 });
 
+// Boards the local train in the given phase, then starts the announcer, so
+// the initial state is the "already there" baseline.
+function boardThenStart(phase: TrainState["phase"]) {
+  const w = useWorld.getState();
+  w.addTrain({ ...local, phase });
+  w.setLocalTrainId("local");
+  announcer = createDepartureAnnouncer();
+  announcer.start();
+  return w;
+}
+
 describe("createDepartureAnnouncer", () => {
-  test("announces when the local train appears running", () => {
+  test("says the start-of-session line when the local train appears running", () => {
     announcer = createDepartureAnnouncer();
     announcer.start();
     const w = useWorld.getState();
@@ -42,70 +53,72 @@ describe("createDepartureAnnouncer", () => {
     expect(speechOf("local")?.audioUrl).toBe("/audio/start_session1.mp3");
   });
 
-  test("announces a departure from stopped to running", () => {
-    const w = useWorld.getState();
-    w.addTrain(local);
-    w.setLocalTrainId("local");
-    announcer = createDepartureAnnouncer();
-    announcer.start();
+  test("says the restart line when pulling out of a station", () => {
+    const w = boardThenStart("stopped");
     expect(speechOf("local")).toBeUndefined();
     w.setPhase("local", "running");
-    expect(speechOf("local")?.text).toBe(VOICE_LINES.startSession.text);
+    expect(speechOf("local")?.text).toBe(VOICE_LINES.restartStudy.text);
+    expect(speechOf("local")?.audioUrl).toBe("/audio/restart_study1.mp3");
   });
 
-  test("does not announce a train that is already running when it starts", () => {
-    const w = useWorld.getState();
-    w.addTrain({ ...local, phase: "running" });
-    w.setLocalTrainId("local");
-    announcer = createDepartureAnnouncer();
-    announcer.start();
-    w.setEfficiency("local", 0.9);
-    expect(speechOf("local")).toBeUndefined();
-  });
-
-  test("does not announce stopping", () => {
-    const w = useWorld.getState();
-    w.addTrain({ ...local, phase: "running" });
-    w.setLocalTrainId("local");
-    announcer = createDepartureAnnouncer();
-    announcer.start();
+  test("says the break line when stopping", () => {
+    const w = boardThenStart("running");
     w.setPhase("local", "stopped");
+    expect(speechOf("local")?.text).toBe(VOICE_LINES.takeBreak.text);
+    expect(speechOf("local")?.audioUrl).toBe("/audio/take_break1.mp3");
+  });
+
+  test("says the great-session line when finishing", () => {
+    const w = boardThenStart("running");
+    w.setPhase("local", "finished");
+    expect(speechOf("local")?.text).toBe(VOICE_LINES.greatSession.text);
+    expect(speechOf("local")?.audioUrl).toBe("/audio/great_session1.mp3");
+  });
+
+  test("says the restart line when running again after finishing", () => {
+    const w = boardThenStart("finished");
+    w.setPhase("local", "running");
+    expect(speechOf("local")?.text).toBe(VOICE_LINES.restartStudy.text);
+  });
+
+  test.each(["running", "stopped", "finished"] as const)(
+    "does not announce a train that is already %s when it starts",
+    (phase) => {
+      const w = boardThenStart(phase);
+      w.setEfficiency("local", 0.9);
+      expect(speechOf("local")).toBeUndefined();
+    },
+  );
+
+  test("says nothing when the phase is set to what it already is", () => {
+    const w = boardThenStart("running");
+    w.setPhase("local", "running");
     expect(speechOf("local")).toBeUndefined();
   });
 
   test("ignores friend trains", () => {
-    const w = useWorld.getState();
-    w.addTrain(local);
-    w.setLocalTrainId("local");
+    const w = boardThenStart("stopped");
     w.addTrain(friend);
-    announcer = createDepartureAnnouncer();
-    announcer.start();
     w.setPhase("friend", "running");
+    w.setPhase("friend", "stopped");
     expect(speechOf("friend")).toBeUndefined();
     expect(speechOf("local")).toBeUndefined();
   });
 
-  test("announces every departure with a fresh utterance", () => {
-    const w = useWorld.getState();
-    w.addTrain(local);
-    w.setLocalTrainId("local");
-    announcer = createDepartureAnnouncer();
-    announcer.start();
+  test("every transition is a fresh utterance", () => {
+    const w = boardThenStart("stopped");
     w.setPhase("local", "running");
     const first = speechOf("local")?.id;
     w.setPhase("local", "stopped");
+    const second = speechOf("local")?.id;
     w.setPhase("local", "running");
-    expect(speechOf("local")?.id).toBeTruthy();
-    expect(speechOf("local")?.id).not.toBe(first);
+    const third = speechOf("local")?.id;
+    expect(new Set([first, second, third]).size).toBe(3);
   });
 
   test("stop unsubscribes", () => {
-    const w = useWorld.getState();
-    w.addTrain(local);
-    w.setLocalTrainId("local");
-    announcer = createDepartureAnnouncer();
-    announcer.start();
-    announcer.stop();
+    const w = boardThenStart("stopped");
+    announcer?.stop();
     w.setPhase("local", "running");
     expect(speechOf("local")).toBeUndefined();
   });

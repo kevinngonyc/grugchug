@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { effectiveWeight, useEfficiency } from "@/features/efficiency";
-import { VOICE_LINES } from "@/features/speech";
+import { sayLine, VOICE_LINES, type VoiceLineId } from "@/features/speech";
 import { type TrainPhase, useWorld } from "@/features/world";
 import { cn } from "@/lib/utils";
 
 const FRIEND_NAMES = ["Ada", "Grace", "Linus", "Margaret", "Dennis"];
 const PHASES: TrainPhase[] = ["running", "stopped", "finished"];
+const VOICE_LINE_IDS = Object.keys(VOICE_LINES) as VoiceLineId[];
 const CHATTER = [
   "All aboard!",
   "Nice pace back there.",
@@ -72,17 +73,16 @@ export function SessionDevPanel() {
   };
 
   // Every train says a line in turn, 1.5 s apart. The local conductor says the
-  // start-of-session voice line with its clip (a click is a user gesture, so
-  // the browser allows the audio); friends say canned text lines, which
-  // exercise the fallback timer.
+  // next recorded voice line each click, so every clip can be heard without a
+  // real break or finish (a click is a user gesture, so the browser allows the
+  // audio); friends say canned text lines, which exercise the fallback timer.
   const chatter = () => {
     const ids = Object.keys(useWorld.getState().trains);
     const offset = chatterCounter.current++;
     ids.forEach((id, i) => {
       const speak = () => {
         if (id === localTrainId) {
-          const line = VOICE_LINES.startSession;
-          useWorld.getState().say(id, line.text, line.audioUrl);
+          sayLine(VOICE_LINE_IDS[offset % VOICE_LINE_IDS.length] ?? "startSession");
           return;
         }
         useWorld.getState().say(id, CHATTER[(i + offset) % CHATTER.length] ?? "All aboard!");

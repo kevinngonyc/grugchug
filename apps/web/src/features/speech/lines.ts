@@ -8,6 +8,14 @@ export const VOICE_LINES = {
     text: "All aboard! Let's get this study session rolling.", // PLACEHOLDER caption
     audioUrl: "/audio/start_session1.mp3",
   },
+  takeBreak: {
+    text: "Pulling into the station. Take a breather.", // PLACEHOLDER caption
+    audioUrl: "/audio/take_break1.mp3",
+  },
+  restartStudy: {
+    text: "Break's over. Back on the rails!", // PLACEHOLDER caption
+    audioUrl: "/audio/restart_study1.mp3",
+  },
   greatSession: {
     text: "Great session! You kept this train right on time.", // PLACEHOLDER caption
     audioUrl: "/audio/great_session1.mp3",
