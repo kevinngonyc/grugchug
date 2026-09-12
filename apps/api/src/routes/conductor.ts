@@ -71,9 +71,13 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function materialHash(material: Material): string {
+// One hash over the whole upload set, in the order it was sent: two routes
+// built from the same files are the same material.
+function materialHash(materials: readonly Material[]): string {
   const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update(material.kind === "text" ? material.text : material.base64);
+  for (const material of materials) {
+    hasher.update(material.kind === "text" ? material.text : material.base64);
+  }
   return hasher.digest("hex");
 }
 
@@ -101,12 +105,12 @@ const defaultCreatePlanDeps: CreatePlanDeps = {
 
 async function buildStation(
   skeleton: StationSkeleton,
-  material: Material,
+  materials: readonly Material[],
   index: number,
   runGenerateQuestions: CreatePlanDeps["runGenerateQuestions"],
 ): Promise<Station> {
   try {
-    const result = await runGenerateQuestions({ scope: skeleton.scope, material });
+    const result = await runGenerateQuestions({ scope: skeleton.scope, materials: [...materials] });
     return {
       ...skeleton,
       questions: result.output.questions.map((q, qi) => ({
@@ -125,19 +129,19 @@ async function buildStation(
 export async function createPlanWithDeps(req: Request, deps: CreatePlanDeps): Promise<Response> {
   const body = await readBody(req, createPlanRequestSchema);
   if (!body.ok) return body.response;
-  const { userId, availableMinutes, material } = body.data;
+  const { userId, availableMinutes, materials } = body.data;
 
-  const planResult = await deps.runPlanRoute({ material, availableMinutes });
+  const planResult = await deps.runPlanRoute({ materials, availableMinutes });
   const stations = await Promise.all(
     planResult.output.stations.map((skeleton, i) =>
-      buildStation(skeleton, material, i, deps.runGenerateQuestions),
+      buildStation(skeleton, materials, i, deps.runGenerateQuestions),
     ),
   );
 
   const plan: RoutePlan = {
     id: crypto.randomUUID(),
     userId,
-    materialHash: materialHash(material),
+    materialHash: materialHash(materials),
     totalEstimatedMinutes: stations.reduce((sum, s) => sum + s.estimatedMinutes, 0),
     stations,
   };

@@ -22,7 +22,7 @@ describe("planRouteToolSpec", () => {
 
     const result = await runTool(
       planRouteToolSpec,
-      { material: { kind: "text", text: "some notes" }, availableMinutes: 15 },
+      { materials: [{ kind: "text", text: "some notes" }], availableMinutes: 15 },
       resolve,
     );
 
@@ -36,7 +36,7 @@ describe("planRouteToolSpec", () => {
 
     const result = await runTool(
       planRouteToolSpec,
-      { material: { kind: "text", text: "some notes" } },
+      { materials: [{ kind: "text", text: "some notes" }] },
       resolve,
     );
 
@@ -44,12 +44,26 @@ describe("planRouteToolSpec", () => {
     expect(result.fellBackToFixture).toBe(false);
   });
 
+  test("attaches every uploaded material to one route prompt", () => {
+    const parts = planRouteToolSpec.prompt({
+      materials: [
+        { kind: "text", text: "lecture one" },
+        { kind: "pdf", base64: "dGhpcyBpcyBhIHBkZg==" },
+      ],
+    });
+
+    expect(parts.filter((p) => p.kind === "document")).toHaveLength(1);
+    const text = parts.map((p) => (p.kind === "text" ? p.text : "")).join("\n");
+    expect(text).toContain("2 attached materials");
+    expect(text).toContain("lecture one");
+  });
+
   test("falls back to the fixture stations, without questions, when the model never produces valid JSON", async () => {
     const resolve = () => fakeProvider("not json");
 
     const result = await runTool(
       planRouteToolSpec,
-      { material: { kind: "text", text: "some notes" }, availableMinutes: 30 },
+      { materials: [{ kind: "text", text: "some notes" }], availableMinutes: 30 },
       resolve,
     );
 
@@ -75,7 +89,7 @@ describe("planRouteToolSpec", () => {
     // attempt fails validation and it falls back to the fixture.
     const result = await runTool(
       planRouteToolSpec,
-      { material: { kind: "text", text: "some notes" }, availableMinutes: 60 },
+      { materials: [{ kind: "text", text: "some notes" }], availableMinutes: 60 },
       resolve,
     );
 

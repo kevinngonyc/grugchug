@@ -84,13 +84,17 @@ export const materialSchema = z.discriminatedUnion("kind", [
 
 export type Material = z.infer<typeof materialSchema>;
 
-// Body of POST /api/conductor/plans. availableMinutes is optional — timing
-// is the LLM's call (plan-route sizes stations from the material itself
-// when it's omitted), not something the learner has to guess up front.
+// Hard cap on how many files one route can be built from.
+export const MAX_MATERIALS = 12;
+
+// Body of POST /api/conductor/plans. One route covers every material the
+// learner uploaded, so this takes a list. availableMinutes is optional —
+// timing is the LLM's call (plan-route sizes stations from the material
+// itself when it's omitted), not something the learner has to guess up front.
 export const createPlanRequestSchema = z.object({
   userId: z.string().min(1),
   availableMinutes: z.number().int().min(1).max(600).optional(),
-  material: materialSchema,
+  materials: z.array(materialSchema).min(1).max(MAX_MATERIALS),
 });
 
 export type CreatePlanRequest = z.infer<typeof createPlanRequestSchema>;
